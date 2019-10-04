@@ -101,14 +101,14 @@ function Start-ExTRA {
     $ETWSessionName = "ExchangeDebugTraces"
     $ProviderName = "Microsoft Exchange Server 2010" # Provider Guid: {79BB49E6-2A2C-46E4-9167-FA122525D540}
     $TraceOutputPath = Join-Path $Path -ChildPath $TraceFileName
-    $BufferSizeKB = 128   
+    $BufferSizeKB = 128
 
     # mode = EVENT_TRACE_USE_GLOBAL_SEQUENCE (0x4000) | EVENT_TRACE_FILE_MODE_NEWFILE (8)
     # see https://docs.microsoft.com/en-us/windows/win32/etw/logging-mode-constants
     # Note: must use "globalsequence" instead of "EVENT_TRACE_USE_GLOBAL_SEQUENCE".
     $logFileMode = "globalsequence | EVENT_TRACE_FILE_MODE_NEWFILE"
 
-    $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$logFileMode`" -ets"        
+    $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$logFileMode`" -ets"
     if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME,$logmanCommand)) {
         Write-Verbose "executing $logmanCommand"
         $logmanResult = Invoke-Expression $logmanCommand
@@ -272,38 +272,25 @@ function Collect-ExTRA {
         [Parameter(Mandatory = $true)]
         [Hashtable]$ComponentAndTags
     )
-    
+
     if (-not (Test-Path $Path)) {
         New-Item $Path -ItemType directory -ErrorAction Stop | Out-Null
     }
-    
+
     $Path = Resolve-Path $Path
     $tempPath = Join-Path $Path -ChildPath $([Guid]::NewGuid().ToString())
     New-Item $tempPath -ItemType directory -ErrorAction Stop | Out-Null
-    
+
     try {
         Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
-        $sessionInfo = Start-ExTRA -Path $tempPath -ComponentAndTags $ComponentAndTags                    
-           
+        $sessionInfo = Start-ExTRA -Path $tempPath -ComponentAndTags $ComponentAndTags
+
         Read-Host "ExTRA has successfully started. Hit enter to stop ExTRA"
-        
-        <#       
-        # Bug in PowerShell ISE when using [Console]::ReadLine()
-        # https://github.com/dotnet/corefx/issues/13708 
-        if ($psISE) {
-            Add-Type -AssemblyName System.Windows.Forms
-            [System.Windows.Forms.MessageBox]::Show("ExTRA has successfully started. Press OK to stop ExTRA:") | Out-Null
-        }
-        else {        
-            Write-Host "ExTRA has successfully started. Hit enter to stop ExTRA: "
-            [Console]::ReadLine()      
-            #$Host.ui.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        }  #>
-               
+
         $stopResult = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
         Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
         $zipFileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
-        Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles        
+        Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles
         Remove-Item $tempPath -Force
         Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
         Invoke-Item $Path
@@ -316,4 +303,3 @@ function Collect-ExTRA {
         }
     }
 }
-
