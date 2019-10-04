@@ -1,6 +1,6 @@
 # Overview
 
-ExTRA.ps1 contains functions to collect a ETW trace on a Exchange Server
+ExTRA.ps1 contains functions to collect an ETW trace on a Exchange Server
 
 # How to use
 
