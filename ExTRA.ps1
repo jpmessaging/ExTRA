@@ -67,31 +67,35 @@ function Start-ExTRA {
         $component = $entry.Name
         $tags = $entry.Value -split ','
 
-        $knownComponent = Get-ExchangeTraceComponent -ComponentName $component
-        if (-not $knownComponent) {
+        # Given component name can include a wildcard (*), and might match multple components
+        $knownComponents = @(Get-ExchangeTraceComponent -ComponentName $component)
+        if ($knownComponents.Count -eq 0) {
             throw "Cannot find component `"$component`""
         }
-        $component = $knownComponent.PrettyName
 
-        $knownTags = @($knownComponent.TagInfoList | Where-Object {$_.PrettyName} | Select-Object -ExpandProperty PrettyName)
+        foreach ($knownComponent in $knownComponents) {
+            $component = $knownComponent.PrettyName
+            $knownTags = @($knownComponent.TagInfoList | Where-Object {$_.PrettyName} | Select-Object -ExpandProperty PrettyName)
 
-        if ($tags.Count -and $tags[0] -eq '*') {
-            # Add all the known tags except FaultInjection
-            $knownTagsWithoutFaultInjection = $knownTags | Where-Object {$_ -ne 'FaultInjection'}
-            $sb.AppendLine("$($component):$($knownTagsWithoutFaultInjection -join ',')") | Out-Null
-        }
-        else {
-            # Validate tag names and add them.
-            for ($i = 0; $i -lt $tags.Count; $i++) {
-                $tag = $knownTags | Where-Object {$_ -eq $tags[$i]}
-                if (-not $tag) {
-                    throw  "Tag `"$($tags[$i])`" is not valid for component `"$($knownComponent.PrettyName)`""
-                }
-                $tags[$i] = $tag
+            if ($tags.Count -and $tags[0] -eq '*') {
+                # Add all the known tags except FaultInjection* (e.g. FaultInjectionConfiguration)
+                $knownTagsWithoutFaultInjection = $knownTags | Where-Object {$_ -notlike 'FaultInjection*'}
+                $sb.AppendLine("$($component):$($knownTagsWithoutFaultInjection -join ',')") | Out-Null
             }
-            $sb.AppendLine("$($component):$($tags -join ',')") | Out-Null
+            else {
+                # Validate tag names and add them.
+                for ($i = 0; $i -lt $tags.Count; $i++) {
+                    $tag = $knownTags | Where-Object {$_ -eq $tags[$i]}
+                    if (-not $tag) {
+                        throw  "Tag `"$($tags[$i])`" is not valid for component `"$($knownComponent.PrettyName)`""
+                    }
+                    $tags[$i] = $tag
+                }
+                $sb.AppendLine("$($component):$($tags -join ',')") | Out-Null
+            }
         }
     }
+
     $sb.AppendLine('FilteredTracing:No') | Out-Null
     $sb.AppendLine('InMemoryTracing:No') | Out-Null
 
