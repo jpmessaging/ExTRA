@@ -169,44 +169,52 @@ function Stop-ExTRA {
 function Compress-Folder {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true)]
+        # Specifies a path to one or more locations.
+        [Parameter(Mandatory=$true)]
         [string]$Path,
         [string]$Destination,
         [string]$ZipFileName,
-        [bool]$IncludeDateTime,
-        [switch]$RemoveFiles
+        [switch]$IncludeDateTime,
+        [switch]$RemoveFiles,
+        [switch]$UseShellApplication
     )
 
     $Path = Resolve-Path $Path
-
     $zipFileNameWithouExt = [System.IO.Path]::GetFileNameWithoutExtension($ZipFileName)
     if ($IncludeDateTime) {
-        # Create a zip file in TEMP folder with current date time in the name
-        # e.g. Contoso_20160521_193455.zip
-        $currentDateTime = Get-Date -Format "yyyyMMdd_HHmmss"
-        $zipFileName = $zipFileNameWithouExt + "_" + "$currentDateTime.zip"
+        $zipFileName = $zipFileNameWithouExt + "_" + "$(Get-Date -Format "yyyyMMdd_HHmmss").zip"
     }
     else {
         $zipFileName = "$zipFileNameWithouExt.zip"
     }
-    $zipFilePath = Join-Path ((Get-Item ($env:TEMP)).FullName) -ChildPath $zipFileName
 
-    $NETFileSystemAvailable = $true
+    # If Destination is not given, use %TEMP% folder.
+    if (-not $Destination) {
+        $Destination = $env:TEMP
+    }
+
+    if (-not (Test-Path $Destination)) {
+        New-Item $Destination -ItemType Directory -ErrorAction Stop | Out-Null
+    }
+
+    $Destination = Resolve-Path $Destination
+    $zipFilePath = Join-Path $Destination -ChildPath $zipFileName
+
+    $NETFileSystemAvailable = $false
 
     try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+        $NETFileSystemAvailable = $true
     }
     catch {
         Write-Warning "System.IO.Compression.FileSystem wasn't found. Using alternate method"
-        $NETFileSystemAvailable = $false
     }
 
-    if ($NETFileSystemAvailable) {
+    if ($NETFileSystemAvailable -and $UseShellApplication -eq $false) {
         [System.IO.Compression.ZipFile]::CreateFromDirectory($Path, $zipFilePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
     }
     else {
         # Use Shell.Application COM
-        $delayMilliseconds = 200
 
         # Create a zip file manually
         $shellApp = New-Object -ComObject Shell.Application
@@ -215,53 +223,46 @@ function Compress-Folder {
 
         $zipFile = $shellApp.NameSpace($zipFilePath)
 
-        # Start copying the whole and wait until it's done. Note: CopyHere works asynchronously.
-        $zipFile.CopyHere($Path)
+        # If target folder is empty, CopyHere() fails. So make sure it's not empty
+        if (@(Get-ChildItem $Path).Count -gt 0) {
+            # Start copying the whole and wait until it's done. CopyHere works asynchronously.
+            $zipFile.CopyHere($Path)
 
-        # Now wait
-        $inProgress = $true
-        Start-Sleep -Milliseconds 3000
-        [System.IO.FileStream]$file = $null
-        while ($inProgress) {
-            Start-Sleep -Milliseconds $delayMilliseconds
+            # Now wait and poll
+            $inProgress = $true
+            $delayMilliseconds = 200
+            Start-Sleep -Milliseconds 3000
+            [System.IO.FileStream]$file = $null
+            while ($inProgress) {
+                Start-Sleep -Milliseconds $delayMilliseconds
 
-            try {
-                $file = [System.IO.File]::Open($zipFilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
-                $inProgress = $false
-            }
-            catch [System.IO.IOException] {
-                Write-Debug $_.Exception.Message
-            }
-            finally {
-                if ($file) {
-                    $file.Close()
+                try {
+                    $file = [System.IO.File]::Open($zipFilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+                    $inProgress = $false
+                }
+                catch [System.IO.IOException] {
+                    Write-Debug $_.Exception.Message
+                }
+                finally {
+                    if ($file) {
+                        $file.Close()
+                    }
                 }
             }
         }
     }
 
-    # Move the zip file from TEMP folder to Destination (if Destination is not given, then move it to Path)
     if (Test-Path $zipFilePath) {
-        # If Destination doesn't exist, create it. In case of failure, use Path.
-        if ($Destination -and -not (Test-Path $Destination)) {
-            $newDir = New-Item $Destination -ItemType directory -ErrorAction SilentlyContinue
-            if (-not $newDir) {
-                $Destination = $null
-            }
-        }
-
-        if ($Destination) {
-            Move-Item $zipFilePath -Destination $Destination
-        }
-        else {
-            Move-Item $zipFilePath -Destination $Path
-        }
-
         # If requested, remove zipped files
         if ($RemoveFiles) {
-            # At this point, don't use Write-Log since the log file will be deleted too
             Write-Verbose "Removing zipped files"
-            Get-ChildItem $Path -Exclude $ZipFileName | Remove-Item -Recurse -Force
+            Get-ChildItem $Path -Exclude $ZipFileName | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            $filesRemoved = $true
+        }
+
+        New-Object PSCustomObject -Property @{
+            ZipFilePath = $zipFilePath.ToString()
+            FilesRemoved = $filesRemoved -eq $true
         }
     }
     else {
@@ -295,7 +296,7 @@ function Collect-ExTRA {
         $stopResult = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
         Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
         $zipFileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
-        Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles
+        Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles | Out-Null
         Remove-Item $tempPath -Force
         Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
         Invoke-Item $Path
