@@ -104,7 +104,7 @@ function Start-ExTRA {
 
     # Start ETW session
     $ETWSessionName = "ExchangeDebugTraces"
-    $ProviderName = "Microsoft Exchange Server 2010" # Provider Guid: {79BB49E6-2A2C-46E4-9167-FA122525D540}
+    $ProviderName = '{79BB49E6-2A2C-46E4-9167-FA122525D540}'
     $TraceOutputPath = Join-Path $Path -ChildPath $TraceFileName
     $BufferSizeKB = 128
 
@@ -203,7 +203,8 @@ function Compress-Folder {
     $NETFileSystemAvailable = $false
 
     try {
-        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+        Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop
+        # Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
         $NETFileSystemAvailable = $true
     }
     catch {
@@ -211,7 +212,54 @@ function Compress-Folder {
     }
 
     if ($NETFileSystemAvailable -and $UseShellApplication -eq $false) {
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($Path, $zipFilePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+        # Note: [System.IO.Compression.ZipFile]::CreateFromDirectory() fails when one or more files in the directory is locked.
+        #[System.IO.Compression.ZipFile]::CreateFromDirectory($Path, $zipFilePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+        try {
+            New-Item $zipFilePath -ItemType file | Out-Null
+
+            $zipStream = New-Object System.IO.FileStream -ArgumentList $zipFilePath, ([IO.FileMode]::Open)
+            $zipArchive = New-Object System.IO.Compression.ZipArchive -ArgumentList $zipStream, ([IO.Compression.ZipArchiveMode]::Create)
+
+            $files = @(Get-ChildItem $Path -Recurse | Where-Object {-not $_.PSIsContainer})
+            $count = 0
+
+            foreach ($file in $files) {
+                Write-Progress -Activity "Creating a zip file $zipFilePath" -Status "Adding $($file.FullName)" -PercentComplete (100 * $count / $files.Count)
+
+                try {
+                    $fileStream = New-Object System.IO.FileStream -ArgumentList $file.FullName, ([IO.FileMode]::Open), ([IO.FileAccess]::Read), ([IO.FileShare]::ReadWrite)
+                    $zipEntry = $zipArchive.CreateEntry($file.FullName.Substring($Path.Length + 1))
+                    $zipEntryStream = $zipEntry.Open()
+                    $fileStream.CopyTo($zipEntryStream)
+
+                    ++$count
+                }
+                catch {
+                    Write-Error "Failed to add $($file.FullName). $_"
+                }
+                finally {
+                    if ($fileStream) {
+                        $fileStream.Dispose()
+                    }
+
+                    if ($zipEntryStream) {
+                        $zipEntryStream.Dispose()
+                    }
+                }
+            }
+        }
+        finally {
+            if ($zipArchive) {
+                $zipArchive.Dispose()
+            }
+
+            if ($zipStream) {
+                $zipStream.Dispose()
+            }
+
+            Write-Progress -Activity "Creating a zip file $zipFilePath" -Completed
+        }
     }
     else {
         # Use Shell.Application COM
@@ -269,6 +317,7 @@ function Compress-Folder {
         throw "Zip file wasn't successfully created at $zipFilePath"
     }
 }
+
 
 function Collect-ExTRA {
     [CmdletBinding(SupportsShouldProcess = $true)]
