@@ -6,7 +6,7 @@ ExTRA.ps1 contains functions to collect ETW traces on an Exchange Server
 
 1. Download ExTRA.ps1 and unblock the file
 
-    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2019-10-22/ExTRA.ps1)
+    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2019-12-09/ExTRA.ps1)
 
     1.1. Right-click the ps1 file and click [Property]  
     1.2. In the [General] tab, if you see "This file came from another computer and might be blocked to help protect this computer], check [Unblock]
