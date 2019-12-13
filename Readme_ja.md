@@ -16,10 +16,11 @@ ExTRA.ps1 は Exchange サーバーの ETW トレースを取得するための�
 3. 管理者権限で Exchange 管理シェルを起動します。
 4. ドット ソースで ExTRA.ps1 をインポートします。
 
-    ```PowerShell
+    ```
     . <ExTRA.ps1 へのパス>
-
+    ```    
     例:
+    ```
     . c:\temp\ExTRA.ps1
     ```
 
@@ -29,8 +30,9 @@ ExTRA.ps1 は Exchange サーバーの ETW トレースを取得するための�
 
     ```PowerShell
     Collect-ExTRA -Path <出力先フォルダ> -ComponentAndTags <採取するコンポーネントとタグのハッシュテーブル>
-
+    ```
     例:
+    ```PowerShell
     Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*'}
     ```
 
