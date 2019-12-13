@@ -8,17 +8,18 @@ ExTRA.ps1 contains functions to collect ETW traces on an Exchange Server
 
     [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2019-12-09/ExTRA.ps1)
 
-    1.1. Right-click the ps1 file and click [Property]  
-    1.2. In the [General] tab, if you see "This file came from another computer and might be blocked to help protect this computer]", check [Unblock]
+    1. Right-click the ps1 file and click [Property]  
+    2. In the [General] tab, if you see "This file came from another computer and might be blocked to help protect this computer]", check [Unblock]
 
 2. Place ExTRA.ps1 on an Exchange Server
 3. Start a PowerShell console as administrator
 4. Dot source the ExTRA.ps1
 
-    ```PowerShell
+    ```
     . <path to ExTRA.ps1>
-
+    ```
     e.g.
+    ```
     . C:\temp\ExTRA.ps1
     ```
 
@@ -29,8 +30,9 @@ ExTRA.ps1 contains functions to collect ETW traces on an Exchange Server
 
     ```PowerShell
     Collect-ExTRA -Path <output folder> -ComponentAndTags <hash table of components & tags to trace>
-
+    ```
     e.g.
+    ```PowerShell
     Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*';'InfoWorker.Sharing'='LocalFolder,SharingEngine'}
     ```
 
