@@ -1,3 +1,36 @@
+<#
+.SYNOPSIS
+Collect Exchange Server ETW trace
+
+.DESCRIPTION
+This script contains functions to collect an ETW trace on an Exchange Server. The main function to use is Collect-ExTRA:
+
+    Collect-ExTRA -Path <output folder> -ComponentAndTags <hash table of components & tags to trace>
+
+You can "dot source" the script to load these functions.
+
+e.g. 
+. C:\temp\ExTRA.ps1
+
+See more on:
+https://github.com/jpmessaging/ExTRA
+
+.EXAMPLE
+Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*';'InfoWorker.Sharing'='LocalFolder,SharingEngine'}
+
+.NOTES
+Copyright 2020 Ryusuke Fujita
+
+This software is released under the MIT License.
+http://opensource.org/licenses/mit-license.php
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#>
+
 #requires -Version 3.0
 
 function Get-ExchangeTraceComponent {
