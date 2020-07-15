@@ -19,7 +19,7 @@ https://github.com/jpmessaging/ExTRA
 Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*';'InfoWorker.Sharing'='LocalFolder,SharingEngine'}
 
 .NOTES
-Copyright 2020 Ryusuke Fujita
+Copyright (c) 2020 Ryusuke Fujita
 
 This software is released under the MIT License.
 http://opensource.org/licenses/mit-license.php
@@ -180,6 +180,17 @@ function Stop-ExTRA {
         return
     }
 
+    # Find the output path 
+    $outputFile = $null
+    $sessionInfo = & logman.exe -ets $ETWSessionName 
+    foreach ($line in $sessionInfo) {
+        if ($line -match ': +(?<filePath>.*\.etl$)') {
+            $outputFile = $Matches['filePath']
+            break
+        }
+    }
+
+    # Stop the session
     $logmanResult = & logman.exe stop $ETWSessionName -ets
 
     if ($LASTEXITCODE -ne 0) {
@@ -196,6 +207,7 @@ function Stop-ExTRA {
     [PSCustomObject]@{
         LogmanResult = $logmanResult
         ConfigFileRemoved = $($null -eq $err)
+        OutputFile = $outputFile
     }
 }
 
