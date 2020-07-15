@@ -31,7 +31,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #>
 
-#requires -Version 3.0
+#requires -Version 2.0
 
 function Get-ExchangeTraceComponent {
     [CmdletBinding()]
@@ -156,7 +156,7 @@ function Start-ExTRA {
         }
     }
 
-    [PSCustomObject]@{
+    New-Object PSCustomObject -Property @{
         LogmanResult = $logmanResult
         LogmanCommand = $logmanCommand
         ETWSessionName = $ETWSessionName
@@ -204,7 +204,7 @@ function Stop-ExTRA {
         Write-Warning "Please remove $ConfigFile.`n$err"
     }
 
-    [PSCustomObject]@{
+    New-Object PSCustomObject -Property @{
         LogmanResult = $logmanResult
         ConfigFileRemoved = $($null -eq $err)
         OutputFile = $outputFile
