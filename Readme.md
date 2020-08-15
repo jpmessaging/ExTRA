@@ -1,26 +1,26 @@
-# Overview
+## Overview
 
-ExTRA.ps1 contains functions to collect ETW traces on an Exchange Server
+ExTRA.psm1 contains functions to collect ETW traces on an Exchange Server
 
-# How to use
+## How to use
 
-1. Download ExTRA.ps1 and unblock the file
+1. Download ExTRA.psm1 and unblock the file
 
-    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2020-07-16/ExTRA.ps1)
+    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2020-07-16/ExTRA.psm1)
 
-    1. Right-click the ps1 file and click [Property]  
+    1. Right-click the psm1 file and click [Property]  
     2. In the [General] tab, if you see "This file came from another computer and might be blocked to help protect this computer]", check [Unblock]
 
-2. Place ExTRA.ps1 on an Exchange Server
+2. Place ExTRA.psm1 on an Exchange Server
 3. Start a PowerShell console as administrator
-4. Dot source the ExTRA.ps1
+4. Import ExTRA.psm1
 
     ```
-    . <path to ExTRA.ps1>
+    Import-Module <path to ExTRA.psm1> -DisableNameChecking
     ```
     e.g.
     ```
-    . C:\temp\ExTRA.ps1
+    Import-Module C:\temp\ExTRA.psm1 -DisableNameChecking
     ```
 
 5. Run Collect-ExTRA
@@ -44,7 +44,7 @@ ExTRA.ps1 contains functions to collect ETW traces on an Exchange Server
 A zip file `"ExTRA_<ServerName>_<DateTime>.zip"` is created in the output folder specified in step 5.
 Please send this to a Microsoft engineer for analysis.
 
-# License
+## License
 Copyright (c) 2020 Ryusuke Fujita
 
 This software is released under the MIT License.  

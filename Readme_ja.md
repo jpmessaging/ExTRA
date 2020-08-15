@@ -1,27 +1,25 @@
-# 概要
+## 概要
+ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための関数を含む PowerShell スクリプトです。
 
-ExTRA.ps1 は Exchange サーバーの ETW トレースを取得するための関数を含む PowerShell スクリプトです。
+## 利用方法
 
+1. ExTRA.psm1 をダウンロードし、ブロックを解除します。
 
-# 利用方法
-
-1. ExTRA.ps1 をダウンロードし、ブロックを解除します。
-
-    [ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2020-07-16/ExTRA.ps1)
+    [ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2020-07-16/ExTRA.psm1)
 
    1.1. ファイルを右クリックして、プロパティを開きます  
    1.2 [全般] タブにて、「このファイルは他のコンピューターから取得したものです。このコンピューターを保護するため、このファイルへのアクセスはブロックされる可能性があります。」というメッセージが表示されている場合には、[許可する] にチェックを入れます。
 
-2. 対象の Exchange サーバー上に ExTRA.ps1 をコピーします。
+2. 対象の Exchange サーバー上に ExTRA.psm1 をコピーします。
 3. 管理者権限で Exchange 管理シェルを起動します。
-4. ドット ソースで ExTRA.ps1 をインポートします。
+4. ExTRA.psm1 をインポートします。
 
     ```
-    . <ExTRA.ps1 へのパス>
+    Import-Module <ExTRA.psm1 へのパス> -DisableNameChecking
     ```    
     例:
     ```
-    . c:\temp\ExTRA.ps1
+    Import-Module c:\temp\ExTRA.psm1 -DisableNameChecking
     ```
 
 5. Collect-ExTRA を実行します
@@ -42,7 +40,7 @@ ExTRA.ps1 は Exchange サーバーの ETW トレースを取得するための�
 
 手順 5 で出力先に指定したフォルダに `"ExTRA_<サーバー名>_<取得日時>.zip"` という名前の ZIP ファイルが作成されます。こちらをお寄せください。
 
-# ライセンス
+## ライセンス
 Copyright (c) 2020 Ryusuke Fujita
 
 This software is released under the MIT License.  
