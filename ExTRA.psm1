@@ -9,7 +9,7 @@ This script contains functions to collect an ETW trace on an Exchange Server. Th
 
 You can Import-Module the script to load these functions.
 
-e.g. 
+e.g.
 Import-Module C:\temp\ExTRA.psm1 -DisableNameChecking
 
 See more on:
@@ -168,34 +168,11 @@ function Start-ExTRA {
 
 function Stop-ExTRA {
     [CmdletBinding()]
-    param (
-        [string]
-        $ETWSessionName = "ExchangeDebugTraces"
+    param(
+        [string]$ETWSessionName = "ExchangeDebugTraces"
     )
 
-    $sess = & logman.exe -ets
-    $extraSession = $sess | Where-Object {$_ -like "*$ETWSessionName*"}
-    if (-not $extraSession) {
-        Write-Warning "Cannot find a session `"$ETWSessionName`""
-        return
-    }
-
-    # Find the output path 
-    $outputFile = $null
-    $sessionInfo = & logman.exe -ets $ETWSessionName 
-    foreach ($line in $sessionInfo) {
-        if ($line -match ': +(?<filePath>.*\.etl$)') {
-            $outputFile = $Matches['filePath']
-            break
-        }
-    }
-
-    # Stop the session
-    $logmanResult = & logman.exe stop $ETWSessionName -ets
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to stop ETW session. Error: 0x$("{0:X}" -f $LASTEXITCODE)"
-    }
+    $session = Stop-EtwSession $ETWSessionName
 
     # Remove EnabledTraces.Config
     $ConfigFile = "C:\EnabledTraces.Config"
@@ -205,9 +182,212 @@ function Stop-ExTRA {
     }
 
     New-Object PSCustomObject -Property @{
-        LogmanResult = $logmanResult
+        Session = $session
         ConfigFileRemoved = $($null -eq $err)
-        OutputFile = $outputFile
+        OutputFile = $session.LogFileName
+    }
+}
+
+$ETWType = @'
+// https://docs.microsoft.com/en-us/windows/win32/etw/wnode-header
+[StructLayout(LayoutKind.Sequential)]
+public struct WNODE_HEADER
+{
+    public uint BufferSize;
+    public uint ProviderId;
+    public ulong HistoricalContext;
+    public ulong KernelHandle;
+    public Guid Guid;
+    public uint ClientContext;
+    public uint Flags;
+}
+
+// https://docs.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_properties
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+public struct EVENT_TRACE_PROPERTIES
+{
+    public WNODE_HEADER Wnode;
+    public uint BufferSize;
+    public uint MinimumBuffers;
+    public uint MaximumBuffers;
+    public uint MaximumFileSize;
+    public uint LogFileMode;
+    public uint FlushTimer;
+    public uint EnableFlags;
+    public int AgeLimit;
+    public uint NumberOfBuffers;
+    public uint FreeBuffers;
+    public uint EventsLost;
+    public uint BuffersWritten;
+    public uint LogBuffersLost;
+    public uint RealTimeBuffersLost;
+    public IntPtr LoggerThreadId;
+    public int LogFileNameOffset;
+    public int LoggerNameOffset;
+}
+
+public struct EventTraceProperties
+{
+    public EVENT_TRACE_PROPERTIES Properties;
+    public string SessionName;
+    public string LogFileName;
+
+    public EventTraceProperties(EVENT_TRACE_PROPERTIES properties, string sessionName, string logFileName)
+    {
+        Properties = properties;
+        SessionName = sessionName;
+        LogFileName = logFileName;
+    }
+}
+
+[DllImport("kernel32.dll", ExactSpelling = true)]
+public static extern void RtlZeroMemory(IntPtr dst, int length);
+
+[DllImport("Advapi32.dll", ExactSpelling = true)]
+public static extern int QueryAllTracesW(IntPtr[] PropertyArray, uint PropertyArrayCount, ref int LoggerCount);
+
+[DllImport("Advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+public static extern int StopTraceW(ulong TraceHandle, string InstanceName, IntPtr Properties); // TRACEHANDLE is defined as ULONG64
+
+const int MAX_SESSIONS = 64;
+const int MAX_NAME_COUNT = 1024; // max char count for LogFileName & SessionName
+const uint ERROR_SUCCESS = 0;
+
+// https://docs.microsoft.com/en-us/windows/win32/etw/wnode-header
+// > The size of memory must include the room for the EVENT_TRACE_PROPERTIES structure plus the session name string and log file name string that follow the structure in memory.
+static readonly int PropertiesSize = Marshal.SizeOf(typeof(EVENT_TRACE_PROPERTIES)) + 2 * sizeof(char) * MAX_NAME_COUNT; // EVENT_TRACE_PROPERTIES + LogFileName & LoggerName
+static readonly int LoggerNameOffset = Marshal.SizeOf(typeof(EVENT_TRACE_PROPERTIES));
+static readonly int LogFileNameOffset = LoggerNameOffset + sizeof(char) * MAX_NAME_COUNT;
+
+public static List<EventTraceProperties> QueryAllTraces()
+{
+    IntPtr pBuffer = IntPtr.Zero;
+    List<EventTraceProperties> eventProperties = null;
+    try
+    {
+        // Allocate native memorty to hold the entire data.
+        int BufferSize = PropertiesSize * MAX_SESSIONS;
+        pBuffer = Marshal.AllocCoTaskMem(BufferSize);
+        RtlZeroMemory(pBuffer, BufferSize);
+
+        IntPtr[] sessions = new IntPtr[64];
+
+        for (int i = 0; i < 64; ++i)
+        {
+            //sessions[i] = pBuffer + (i * PropertiesSize); // This does not compile in .NET 2.0
+            sessions[i] = new IntPtr(pBuffer.ToInt64() + (i * PropertiesSize));
+
+            // Marshal from managed to native
+            EVENT_TRACE_PROPERTIES props = new EVENT_TRACE_PROPERTIES();
+            props.Wnode.BufferSize = (uint)PropertiesSize;
+            props.LoggerNameOffset = LoggerNameOffset;
+            props.LogFileNameOffset = LogFileNameOffset;
+            Marshal.StructureToPtr(props, sessions[i], false);
+        }
+
+        int loggerCount = 0;
+        int status = QueryAllTracesW(sessions, MAX_SESSIONS, ref loggerCount);
+
+        if (status != ERROR_SUCCESS)
+        {
+            throw new Win32Exception(status);
+        }
+
+        eventProperties = new List<EventTraceProperties>();
+        for (int i = 0; i < loggerCount; ++i)
+        {
+            // Marshal back from native to managed.
+            EVENT_TRACE_PROPERTIES props = (EVENT_TRACE_PROPERTIES)Marshal.PtrToStructure(sessions[i], typeof(EVENT_TRACE_PROPERTIES));
+            string sessionName = Marshal.PtrToStringUni(new IntPtr(sessions[i].ToInt64() + LoggerNameOffset));
+            string logFileName = Marshal.PtrToStringUni(new IntPtr(sessions[i].ToInt64() + LogFileNameOffset));
+
+            //eventProperties.Add(new EventTraceProperties { Properties = props, SessionName = sessionName, LogFileName = logFileName });
+            eventProperties.Add(new EventTraceProperties(props,sessionName, logFileName));
+        }
+    }
+    finally
+    {
+        if (pBuffer != IntPtr.Zero)
+        {
+            Marshal.FreeCoTaskMem(pBuffer);
+            pBuffer = IntPtr.Zero;
+        }
+    }
+
+    return eventProperties;
+}
+
+public static EventTraceProperties StopTrace(string SessionName)
+{
+    IntPtr pProps = IntPtr.Zero;
+    try
+    {
+        pProps = Marshal.AllocCoTaskMem(PropertiesSize);
+        RtlZeroMemory(pProps, PropertiesSize);
+
+        EVENT_TRACE_PROPERTIES props = new EVENT_TRACE_PROPERTIES();
+        props.Wnode.BufferSize = (uint)PropertiesSize;
+        props.LoggerNameOffset = LoggerNameOffset;
+        props.LogFileNameOffset = LogFileNameOffset;
+        Marshal.StructureToPtr(props, pProps, false);
+
+        int status = StopTraceW(0, SessionName, pProps);
+        if (status != ERROR_SUCCESS)
+        {
+            throw new Win32Exception(status);
+        }
+
+        props = (EVENT_TRACE_PROPERTIES)Marshal.PtrToStructure(pProps, typeof(EVENT_TRACE_PROPERTIES));
+        string sessionName = Marshal.PtrToStringUni(new IntPtr(pProps.ToInt64() + LoggerNameOffset));
+        string logFileName = Marshal.PtrToStringUni(new IntPtr(pProps.ToInt64() + LogFileNameOffset));
+
+        //return new EventTraceProperties { Properties = props, SessionName = sessionName, LogFileName = logFileName };
+        return new EventTraceProperties(props, sessionName, logFileName);
+    }
+    finally
+    {
+        if (pProps != IntPtr.Zero)
+        {
+            Marshal.FreeCoTaskMem(pProps);
+        }
+    }
+}
+'@
+
+
+function Get-EtwSession {
+    [CmdletBinding()]
+    param()
+
+    if (-not ('Win32.ETW' -as [type])) {
+        Add-type -MemberDefinition $ETWType -Namespace Win32 -Name ETW -UsingNamespace System.Collections.Generic, System.ComponentModel
+    }
+
+    try {
+        $traces = [Win32.ETW]::QueryAllTraces()
+        return $traces
+    }
+    catch {
+        Write-Error "QueryAllTraces failed. $_"
+    }
+}
+
+function Stop-EtwSession {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SessionName
+    )
+
+    if (-not ('Win32.ETW' -as [type])) {
+        Add-type -MemberDefinition $ETWType -Namespace Win32 -Name ETW -UsingNamespace System.Collections.Generic, System.ComponentModel
+    }
+
+    try {
+        return [Win32.ETW]::StopTrace($SessionName)
+    }
+    catch {
+        Write-Error "StopTrace for $SessionName failed. $_"
     }
 }
 
@@ -253,7 +433,7 @@ function Compress-Folder {
         $NETFileSystemAvailable = $true
     }
     catch {
-        Write-Warning "System.IO.Compression.FileSystem wasn't found. Using alternate method"
+        Write-Verbose "System.IO.Compression.FileSystem wasn't found. Using alternate method"
     }
 
     if ($NETFileSystemAvailable -and $UseShellApplication -eq $false) {
@@ -405,4 +585,4 @@ function Collect-ExTRA {
 }
 
 
-Export-ModuleMember -Function Get-ExchangeTraceComponent, Start-ExTRA, Stop-ExTRA, Collect-ExTRA
+Export-ModuleMember -Function Get-ExchangeTraceComponent, Start-ExTRA, Stop-ExTRA, Get-EtwSession, Stop-EtwSession, Collect-ExTRA
