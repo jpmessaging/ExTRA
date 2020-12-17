@@ -68,8 +68,10 @@ function Start-ExTRA {
     param (
         [Parameter(Mandatory = $true)]
         $Path,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ParameterSetName='ComponentAndTag')]
         [Hashtable]$ComponentAndTags,
+        [Parameter(Mandatory = $true, ParameterSetName='ComponentOnly')]
+        [string[]]$Components,
         $TraceFileName,
         [int]$MaxFileSizeMB = 512
     )
@@ -96,6 +98,12 @@ function Start-ExTRA {
     # Create EnabledTraces.Config
     $sb = New-Object 'System.Text.StringBuilder'
     $sb.AppendLine("TraceLevels:Debug,Warning,Error,Fatal,Info,Performance,Function,Pfd") | Out-Null
+
+    if ($PSCmdlet.ParameterSetName -eq 'ComponentOnly') {        
+        $ComponentAndTags = @{}
+        $Components | ForEach-Object {$ComponentAndTags.Add($_, '*')}        
+    }
+
     foreach ($entry in $ComponentAndTags.GetEnumerator()) {
         $component = $entry.Name
         $tags = $entry.Value -split ','

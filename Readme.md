@@ -29,8 +29,18 @@ ExTRA.psm1 contains functions to collect ETW traces on an Exchange Server
     When the trace has successfully started, it shows `"ExTRA has successfully started. Hit enter to stop ExTRA"`
 
     ```PowerShell
+    Collect-ExTRA -Path <output folder> -Components <array of component names>
+    ```
+    or 
+    ```PowerShell
     Collect-ExTRA -Path <output folder> -ComponentAndTags <hash table of components & tags to trace>
     ```
+
+    e.g.
+    ```PowerShell
+    Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage
+    ```
+
     e.g.
     ```PowerShell
     Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*';'InfoWorker.Sharing'='LocalFolder,SharingEngine'}

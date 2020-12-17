@@ -7,7 +7,7 @@ ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための
 
     [ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2020-10-09/ExTRA.psm1)
 
-   1.1. ファイルを右クリックして、プロパティを開きます  
+   1.1. ファイルを右クリックして、プロパティを開きます
    1.2 [全般] タブにて、「このファイルは他のコンピューターから取得したものです。このコンピューターを保護するため、このファイルへのアクセスはブロックされる可能性があります。」というメッセージが表示されている場合には、[許可する] にチェックを入れます。
 
 2. 対象の Exchange サーバー上に ExTRA.psm1 をコピーします。
@@ -16,7 +16,7 @@ ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための
 
     ```
     Import-Module <ExTRA.psm1 へのパス> -DisableNameChecking
-    ```    
+    ```
     例:
     ```
     Import-Module c:\temp\ExTRA.psm1 -DisableNameChecking
@@ -24,11 +24,22 @@ ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための
 
 5. Collect-ExTRA を実行します
 
-    ※ 採取するコンポーネントとタグについてはエンジニアからの案内をご確認ください。
+    ※ 採取するコンポーネント (とタグ) についてはエンジニアからの案内をご確認ください。
 
+    ```PowerShell
+    Collect-ExTRA -Path <出力先フォルダ> -Components <採取するコンポーネント名の配列>
+    ```
+
+    または
     ```PowerShell
     Collect-ExTRA -Path <出力先フォルダ> -ComponentAndTags <採取するコンポーネントとタグのハッシュテーブル>
     ```
+
+    例:
+    ```PowerShell
+    Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage
+    ```
+
     例:
     ```PowerShell
     Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*'}
