@@ -68,11 +68,9 @@ function Start-ExTRA {
     param (
         [Parameter(Mandatory = $true)]
         $Path,
-        [Parameter(Mandatory = $true, ParameterSetName='ComponentAndTag')]
-        [Hashtable]$ComponentAndTags,
-        [Parameter(Mandatory = $true, ParameterSetName='ComponentOnly')]
         [string[]]$Components,
-        $TraceFileName,
+        [Hashtable]$ComponentAndTags,
+        [string]$TraceFileName,
         [int]$MaxFileSizeMB = 512
     )
 
@@ -99,10 +97,36 @@ function Start-ExTRA {
     $sb = New-Object 'System.Text.StringBuilder'
     $sb.AppendLine("TraceLevels:Debug,Warning,Error,Fatal,Info,Performance,Function,Pfd") | Out-Null
 
-    if ($PSCmdlet.ParameterSetName -eq 'ComponentOnly') {        
+    if ($null -eq $ComponentAndTags) {
         $ComponentAndTags = @{}
-        $Components | ForEach-Object {$ComponentAndTags.Add($_, '*')}        
     }
+
+    # Merge $Components to $ComponentAndTags.
+    # If there is any duplicate component, write error and bail.
+    $dupCount = 0
+    foreach ($comp in $Components) {
+        if ($ComponentAndTags.ContainsKey($comp)) {
+            Write-Error -Message "Component `"$comp`" is already in ComponentAndTags table."
+            $dupCount++
+        }
+        else {
+            $ComponentAndTags.Add($comp, '*')
+        }
+    }
+
+    if ($dupCount) {
+        return
+    }
+
+    if ($ComponentAndTags.Count -eq 0) {
+        Write-Error -Message "Both Components and ComponentAndTags cannot be empty at the same time."
+        return
+    }
+
+    # if ($PSCmdlet.ParameterSetName -eq 'ComponentOnly') {
+    #     $ComponentAndTags = @{}
+    #     $Components | ForEach-Object {$ComponentAndTags.Add($_, '*')}
+    # }
 
     foreach ($entry in $ComponentAndTags.GetEnumerator()) {
         $component = $entry.Name
