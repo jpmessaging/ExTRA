@@ -142,7 +142,7 @@ function Start-ExTRA {
             $component = $knownComponent.PrettyName
             $knownTags = @($knownComponent.TagInfoList | Where-Object {$_.PrettyName} | Select-Object -ExpandProperty PrettyName)
 
-            if ($tags.Count -and $tags[0] -eq '*') {
+            if ($tags.Count -and $tags[0].Trim() -eq '*') {
                 # Add all the known tags except FaultInjection* (e.g. FaultInjectionConfiguration)
                 $knownTagsWithoutFaultInjection = $knownTags | Where-Object {$_ -notlike 'FaultInjection*'}
                 $sb.AppendLine("$($component):$($knownTagsWithoutFaultInjection -join ',')") | Out-Null
@@ -150,9 +150,9 @@ function Start-ExTRA {
             else {
                 # Validate tag names and add them.
                 for ($i = 0; $i -lt $tags.Count; $i++) {
-                    $tag = $knownTags | Where-Object {$_ -eq $tags[$i]}
+                    $tag = $knownTags | Where-Object {$_ -eq $tags[$i].Trim()}
                     if (-not $tag) {
-                        throw  "Tag `"$($tags[$i])`" is not valid for component `"$($knownComponent.PrettyName)`""
+                        throw  "Tag `"$($tags[$i].Trim())`" is not valid for component `"$($knownComponent.PrettyName)`""
                     }
                     $tags[$i] = $tag
                 }
