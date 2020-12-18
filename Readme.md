@@ -6,7 +6,7 @@ ExTRA.psm1 contains functions to collect ETW traces on an Exchange Server
 
 1. Download ExTRA.psm1 and unblock the file
 
-    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2020-10-09/ExTRA.psm1)
+    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2020-12-18/ExTRA.psm1)
 
     1. Right-click the psm1 file and click [Property]  
     2. In the [General] tab, if you see "This file came from another computer and might be blocked to help protect this computer]", check [Unblock]
