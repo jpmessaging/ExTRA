@@ -28,23 +28,17 @@ ExTRA.psm1 contains functions to collect ETW traces on an Exchange Server
     Note: Follow Microsoft engineer's instruction regarding which components & tags to trace.
     When the trace has successfully started, it shows `"ExTRA has successfully started. Hit enter to stop ExTRA"`
 
+
     ```PowerShell
-    Collect-ExTRA -Path <output folder> -Components <array of component names>
-    ```
-    or 
-    ```PowerShell
-    Collect-ExTRA -Path <output folder> -ComponentAndTags <hash table of components & tags to trace>
+    Collect-ExTRA -Path <output folder> -Components <array of component names> -ComponentAndTags <hash table of components & tags to trace>
     ```
 
     e.g.
     ```PowerShell
-    Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage
+    Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage -ComponentAndTags @{'SystemLogging'= 'SystemNet,SystemNetSocket'}
     ```
 
-    e.g.
-    ```PowerShell
-    Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*';'InfoWorker.Sharing'='LocalFolder,SharingEngine'}
-    ```
+    \* For components listed in `Components` parameter, trace is enabled for all tags.  For those in `ComponentAndTags` parameter, trace is enabled only for the specified tags.
 
 
 6.  Reproduce the issue

@@ -27,23 +27,16 @@ ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための
     ※ 採取するコンポーネント (とタグ) についてはエンジニアからの案内をご確認ください。
 
     ```PowerShell
-    Collect-ExTRA -Path <出力先フォルダ> -Components <採取するコンポーネント名の配列>
-    ```
-
-    または
-    ```PowerShell
-    Collect-ExTRA -Path <出力先フォルダ> -ComponentAndTags <採取するコンポーネントとタグのハッシュテーブル>
+    Collect-ExTRA -Path <出力先フォルダ> -Components <採取するコンポーネント名の配列> -ComponentAndTags <採取するコンポーネントとタグのハッシュテーブル>
     ```
 
     例:
     ```PowerShell
-    Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage
+    Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage -ComponentAndTags @{'SystemLogging'= 'SystemNet,SystemNetSocket'}
     ```
 
-    例:
-    ```PowerShell
-    Collect-ExTRA -Path C:\temp -ComponentAndTags @{'ADProvider'='*';'Data.Storage'='*'}
-    ```
+    \* `Components` で指定されたものは、すべてのタグについてトレースが有効化されます。`ComponentAndTags` で指定されたものは、明示的に指定されたタグについてのみ有効化されます。
+
 
 6. 正常にトレースが開始されると、`"ExTRA has successfully started. Hit enter to stop ExTRA"` と表示されるので、 事象を再現します。
 7. 再現後、コンソールに Enter キーを入力しトレースを停止します。
