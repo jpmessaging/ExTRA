@@ -581,9 +581,14 @@ function Collect-ExTRA {
     param(
         [Parameter(Mandatory = $true)]
         $Path,
-        [Parameter(Mandatory = $true)]
+        [string[]]$Components,
         [Hashtable]$ComponentAndTags
     )
+
+    if (-not $Components.Count -and -not $ComponentAndTags.Count) {
+        Write-Error "Both Components and ComponentAndTags parameters cannot be empty at the same time."
+        return
+    }
 
     if (-not (Test-Path $Path)) {
         New-Item $Path -ItemType directory -ErrorAction Stop | Out-Null
@@ -595,7 +600,7 @@ function Collect-ExTRA {
 
     try {
         Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
-        $sessionInfo = Start-ExTRA -Path $tempPath -ComponentAndTags $ComponentAndTags
+        $sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags
 
         Read-Host "ExTRA has successfully started. Hit enter to stop ExTRA"
 
