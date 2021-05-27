@@ -619,6 +619,11 @@ function Collect-ExTRA {
 
     try {
         Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
+
+        if (-not $PSBoundParameters.ContainsKey('MaxFileSizeMB') -and $LogFileMode -eq 'Circular') {
+            $MaxFileSizeMB = 2048
+        }
+
         $sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags -LogFileMode $LogFileMode -MaxFileSizeMB $MaxFileSizeMB
 
         Read-Host "ExTRA has successfully started. Hit enter to stop ExTRA"
