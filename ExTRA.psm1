@@ -33,6 +33,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #requires -Version 2.0
 
+
+# ETW Logging Mode Constants for logman
+# https://docs.microsoft.com/en-us/windows/win32/etw/logging-mode-constants
+$LogmanMode = [PSCustomObject]@{
+    EVENT_TRACE_FILE_MODE_SEQUENTIAL = "sequential"
+    EVENT_TRACE_FILE_MODE_CIRCULAR   = 'circular'
+    EVENT_TRACE_FILE_MODE_APPEND     = 'append'
+    EVENT_TRACE_FILE_MODE_NEWFILE    = 'newfile'
+    EVENT_TRACE_USE_GLOBAL_SEQUENCE  = 'globalsequence'
+    EVENT_TRACE_USE_LOCAL_SEQUENCE   = 'localsequence'
+}
+
 function Get-ExchangeTraceComponent {
     [CmdletBinding()]
     param(
@@ -70,8 +82,10 @@ function Start-ExTRA {
         $Path,
         [string[]]$Components,
         [Hashtable]$ComponentAndTags,
-        [string]$TraceFileName,
-        [int]$MaxFileSizeMB = 512
+        [string]$FileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -f "yyyyMMdd_HHmmss").etl",
+        [int]$MaxFileSizeMB = 512,
+        [ValidateSet('NewFile','Circular')]
+        [string]$LogFileMode = 'NewFile'
     )
 
     if (-not (Test-Path $Path)) {
@@ -81,17 +95,6 @@ function Start-ExTRA {
         }
     }
     $Path = Resolve-Path $Path
-
-    if (-not $TraceFileName) {
-        $currentDateTime = Get-Date -Format "yyyyMMdd_HHmmss"
-        $TraceFileName = "ExTRA_$($env:COMPUTERNAME)_$($currentDateTime)_%d.etl"
-    }
-    else {
-        # Since EVENT_TRACE_FILE_MODE_NEWFILE is used, add "_%d"
-        $fileName = [IO.Path]::GetFileNameWithoutExtension($TraceFileName)
-        $fileName += '_%d'
-        $TraceFileName = $fileName + '.etl'
-    }
 
     # Create EnabledTraces.Config
     $sb = New-Object 'System.Text.StringBuilder'
@@ -122,11 +125,6 @@ function Start-ExTRA {
         Write-Error -Message "Both Components and ComponentAndTags cannot be empty at the same time."
         return
     }
-
-    # if ($PSCmdlet.ParameterSetName -eq 'ComponentOnly') {
-    #     $ComponentAndTags = @{}
-    #     $Components | ForEach-Object {$ComponentAndTags.Add($_, '*')}
-    # }
 
     foreach ($entry in $ComponentAndTags.GetEnumerator()) {
         $component = $entry.Name
@@ -167,18 +165,36 @@ function Start-ExTRA {
     $ConfigFile = "C:\EnabledTraces.Config"
     Set-Content -Path $ConfigFile -Value $sb.ToString() -Confirm:$false -ErrorAction Stop
 
-    # Start ETW session
+
+    # Configure ETW session
+    switch ($LogFileMode) {
+        'NewFile' {
+            $mode = @($LogmanMode.EVENT_TRACE_USE_GLOBAL_SEQUENCE, $LogmanMode.EVENT_TRACE_FILE_MODE_NEWFILE) -join ','
+
+            # In order to use newfile, file name must contain "%d"
+            if ($FileName -notlike "*%d*") {
+                $FileName = [System.IO.Path]::GetFileNameWithoutExtension($FileName) + "_%d.etl"
+            }
+            break
+        }
+
+        'Circular' {
+            $mode =  @($LogmanMode.EVENT_TRACE_USE_GLOBAL_SEQUENCE, $LogmanMode.EVENT_TRACE_FILE_MODE_CIRCULAR) -join ','
+
+            if (-not $PSBoundParameters.ContainsKey('MaxFileSizeMB')) {
+                $MaxFileSizeMB = 2048
+            }
+            break
+        }
+    }
+
     $ETWSessionName = "ExchangeDebugTraces"
     $ProviderName = '{79BB49E6-2A2C-46E4-9167-FA122525D540}'
-    $TraceOutputPath = Join-Path $Path -ChildPath $TraceFileName
     $BufferSizeKB = 128
+    $TraceOutputPath = Join-Path $Path -ChildPath $FileName
+    $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$mode`" -ets"
 
-    # mode = EVENT_TRACE_USE_GLOBAL_SEQUENCE (0x4000) | EVENT_TRACE_FILE_MODE_NEWFILE (8)
-    # see https://docs.microsoft.com/en-us/windows/win32/etw/logging-mode-constants
-    # Note: must use "globalsequence" instead of "EVENT_TRACE_USE_GLOBAL_SEQUENCE".
-    $logFileMode = "globalsequence | EVENT_TRACE_FILE_MODE_NEWFILE"
-
-    $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$logFileMode`" -ets"
+    # Start ETW session
     if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME,$logmanCommand)) {
         Write-Verbose "executing $logmanCommand"
         $logmanResult = Invoke-Expression $logmanCommand
@@ -216,7 +232,7 @@ function Stop-ExTRA {
     New-Object PSCustomObject -Property @{
         Session = $session
         ConfigFileRemoved = $($null -eq $err)
-        OutputFile = $session.LogFileName
+        Path = $session.LogFileName
     }
 }
 
@@ -582,7 +598,10 @@ function Collect-ExTRA {
         [Parameter(Mandatory = $true)]
         $Path,
         [string[]]$Components,
-        [Hashtable]$ComponentAndTags
+        [Hashtable]$ComponentAndTags,
+        [ValidateSet('NewFile','Circular')]
+        [string]$LogFileMode = 'NewFile',
+        [int]$MaxFileSizeMB = 512
     )
 
     if (-not $Components.Count -and -not $ComponentAndTags.Count) {
@@ -600,7 +619,7 @@ function Collect-ExTRA {
 
     try {
         Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
-        $sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags
+        $sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags -LogFileMode $LogFileMode -MaxFileSizeMB $MaxFileSizeMB
 
         Read-Host "ExTRA has successfully started. Hit enter to stop ExTRA"
 
