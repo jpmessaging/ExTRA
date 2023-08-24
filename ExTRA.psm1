@@ -669,6 +669,7 @@ function Wait-EnterOrControlC {
         }
 
         [Console]::TreatControlCAsInput = $false
+        Write-Host
     }
     else {
         # Read-Host is not used here because it'd block background tasks.
@@ -748,7 +749,7 @@ function Collect-ExTRA {
     }
     finally {
         if ($sessionInfo -and -not $stopResult) {
-            Write-Host ([string]::Empty)
+            Write-Host
             Write-Verbose "Stopping $($sessionInfo.ETWSessionName)"
             $null = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
             Write-Warning "ExTRA was canceled. Please remove files in `"$tempPath`" if not needed."
