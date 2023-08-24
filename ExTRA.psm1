@@ -52,14 +52,14 @@ function Get-ExchangeTraceComponent {
     )
 
     # Make sure "Microsoft.Exchange.Diagnostics.dll" is loaded.
-    $diagAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object {$_.FullName -like "Microsoft.Exchange.Diagnostics*"}
+    $diagAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.FullName -like "Microsoft.Exchange.Diagnostics*" }
     if (-not $diagAssembly) {
         if ($env:ExchangeInstallPath) {
-                $dll = Join-Path $env:ExchangeInstallPath -ChildPath 'bin\Microsoft.Exchange.Diagnostics.dll' -ErrorAction Stop
-                Import-Module $dll -ErrorAction Stop
+            $dll = Join-Path $env:ExchangeInstallPath -ChildPath 'bin\Microsoft.Exchange.Diagnostics.dll' -ErrorAction Stop
+            Import-Module $dll -ErrorAction Stop
         }
         else {
-           throw "Environment Variable `"ExchangeInstallPath`" is not defined"
+            throw "Environment Variable `"ExchangeInstallPath`" is not defined"
         }
     }
 
@@ -67,7 +67,7 @@ function Get-ExchangeTraceComponent {
 
     if ($ComponentName.Count) {
         foreach ($name in $ComponentName) {
-            $components | Where-Object {$_.PrettyName -like "$name" }
+            $components | Where-Object { $_.PrettyName -like "$name" }
         }
     }
     else {
@@ -84,12 +84,12 @@ function Start-ExTRA {
         [Hashtable]$ComponentAndTags,
         [string]$FileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -f "yyyyMMdd_HHmmss").etl",
         [int]$MaxFileSizeMB = 512,
-        [ValidateSet('NewFile','Circular')]
+        [ValidateSet('NewFile', 'Circular')]
         [string]$LogFileMode = 'NewFile'
     )
 
     if (-not (Test-Path $Path)) {
-        $err = $(New-Item -Path $Path -ItemType directory -ErrorAction Stop | Out-Null) 2>&1
+        $err = $($null = New-Item -Path $Path -ItemType directory -ErrorAction Stop) 2>&1
         if ($err) {
             throw $err
         }
@@ -98,7 +98,7 @@ function Start-ExTRA {
 
     # Create EnabledTraces.Config
     $sb = New-Object 'System.Text.StringBuilder'
-    $sb.AppendLine("TraceLevels:Debug,Warning,Error,Fatal,Info,Performance,Function,Pfd") | Out-Null
+    $null = $sb.AppendLine("TraceLevels:Debug,Warning,Error,Fatal,Info,Performance,Function,Pfd")
 
     if ($null -eq $ComponentAndTags) {
         $ComponentAndTags = @{}
@@ -138,29 +138,29 @@ function Start-ExTRA {
 
         foreach ($knownComponent in $knownComponents) {
             $component = $knownComponent.PrettyName
-            $knownTags = @($knownComponent.TagInfoList | Where-Object {$_.PrettyName} | Select-Object -ExpandProperty PrettyName)
+            $knownTags = @($knownComponent.TagInfoList | Where-Object { $_.PrettyName } | Select-Object -ExpandProperty PrettyName)
 
             if ($tags.Count -and $tags[0].Trim() -eq '*') {
                 # Add all the known tags except FaultInjection* (e.g. FaultInjectionConfiguration)
-                $knownTagsWithoutFaultInjection = $knownTags | Where-Object {$_ -notlike 'FaultInjection*'}
-                $sb.AppendLine("$($component):$($knownTagsWithoutFaultInjection -join ',')") | Out-Null
+                $knownTagsWithoutFaultInjection = $knownTags | Where-Object { $_ -notlike 'FaultInjection*' }
+                $null = $sb.AppendLine("$($component):$($knownTagsWithoutFaultInjection -join ',')")
             }
             else {
                 # Validate tag names and add them.
                 for ($i = 0; $i -lt $tags.Count; $i++) {
-                    $tag = $knownTags | Where-Object {$_ -eq $tags[$i].Trim()}
+                    $tag = $knownTags | Where-Object { $_ -eq $tags[$i].Trim() }
                     if (-not $tag) {
                         throw  "Tag `"$($tags[$i].Trim())`" is not valid for component `"$($knownComponent.PrettyName)`""
                     }
                     $tags[$i] = $tag
                 }
-                $sb.AppendLine("$($component):$($tags -join ',')") | Out-Null
+                $null = $sb.AppendLine("$($component):$($tags -join ',')")
             }
         }
     }
 
-    $sb.AppendLine('FilteredTracing:No') | Out-Null
-    $sb.AppendLine('InMemoryTracing:No') | Out-Null
+    $null = $sb.AppendLine('FilteredTracing:No')
+    $null = $sb.AppendLine('InMemoryTracing:No')
 
     $ConfigFile = "C:\EnabledTraces.Config"
     Set-Content -Path $ConfigFile -Value $sb.ToString() -Confirm:$false -ErrorAction Stop
@@ -179,7 +179,7 @@ function Start-ExTRA {
         }
 
         'Circular' {
-            $mode =  @($LogmanMode.EVENT_TRACE_USE_GLOBAL_SEQUENCE, $LogmanMode.EVENT_TRACE_FILE_MODE_CIRCULAR) -join ','
+            $mode = @($LogmanMode.EVENT_TRACE_USE_GLOBAL_SEQUENCE, $LogmanMode.EVENT_TRACE_FILE_MODE_CIRCULAR) -join ','
 
             if (-not $PSBoundParameters.ContainsKey('MaxFileSizeMB')) {
                 $MaxFileSizeMB = 2048
@@ -192,25 +192,42 @@ function Start-ExTRA {
     $ProviderName = '{79BB49E6-2A2C-46E4-9167-FA122525D540}'
     $BufferSizeKB = 128
     $TraceOutputPath = Join-Path $Path -ChildPath $FileName
-    $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$mode`" -ets"
+
+    $logmanArgs = @(
+        'start', $ETWSessionName,
+        '-p', $ProviderName,
+        '-o', $TraceOutputPath,
+        '-bs', $BufferSizeKB,
+        '-max', $MaxFileSizeMB,
+        '-mode', $mode,
+        '-ets'
+    )
+
+    $logmanCommand = "logman.exe $logmanArgs"
+    # $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$mode`" -ets"
 
     # Start ETW session
-    if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME,$logmanCommand)) {
+    if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, $logmanCommand)) {
+        # Write-Verbose "executing $logmanCommand"
+        # $logmanResult = Invoke-Expression $logmanCommand
+
         Write-Verbose "executing $logmanCommand"
-        $logmanResult = Invoke-Expression $logmanCommand
+        $logmanResult = & logman.exe $logmanArgs
 
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start a ETW session `"$ETWSessionName`". Error: 0x$("{0:X}" -f $LASTEXITCODE)"
+            #throw "Failed to start a ETW session `"$ETWSessionName`". Error: 0x$("{0:X}" -f $LASTEXITCODE)"
+            Write-Error -Message "Failed to start a ETW session `"$ETWSessionName`". Error: 0x$("{0:X}" -f $LASTEXITCODE)"
+            return
         }
     }
 
     New-Object PSCustomObject -Property @{
-        LogmanResult = $logmanResult
-        LogmanCommand = $logmanCommand
-        ETWSessionName = $ETWSessionName
-        TraceOutputPath =$TraceOutputPath
-        ConfigFile = $ConfigFile
-        MaxFileSizeMB = $MaxFileSizeMB
+        LogmanResult    = $logmanResult
+        LogmanCommand   = $logmanCommand
+        ETWSessionName  = $ETWSessionName
+        TraceOutputPath = $TraceOutputPath
+        ConfigFile      = $ConfigFile
+        MaxFileSizeMB   = $MaxFileSizeMB
     }
 }
 
@@ -230,9 +247,9 @@ function Stop-ExTRA {
     }
 
     New-Object PSCustomObject -Property @{
-        Session = $session
+        Session           = $session
         ConfigFileRemoved = $($null -eq $err)
-        Path = $session.LogFileName
+        Path              = $session.LogFileName
     }
 }
 
@@ -443,7 +460,7 @@ function Compress-Folder {
     [CmdletBinding()]
     param(
         # Specifies a path to one or more locations.
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Path,
         [string]$Destination,
         [string]$ZipFileName,
@@ -467,7 +484,7 @@ function Compress-Folder {
     }
 
     if (-not (Test-Path $Destination)) {
-        New-Item $Destination -ItemType Directory -ErrorAction Stop | Out-Null
+        $null = New-Item $Destination -ItemType Directory -ErrorAction Stop
     }
 
     $Destination = Resolve-Path $Destination
@@ -489,12 +506,12 @@ function Compress-Folder {
         #[System.IO.Compression.ZipFile]::CreateFromDirectory($Path, $zipFilePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 
         try {
-            New-Item $zipFilePath -ItemType file | Out-Null
+            $null = New-Item $zipFilePath -ItemType file
 
             $zipStream = New-Object System.IO.FileStream -ArgumentList $zipFilePath, ([IO.FileMode]::Open)
             $zipArchive = New-Object System.IO.Compression.ZipArchive -ArgumentList $zipStream, ([IO.Compression.ZipArchiveMode]::Create)
 
-            $files = @(Get-ChildItem $Path -Recurse | Where-Object {-not $_.PSIsContainer})
+            $files = @(Get-ChildItem $Path -Recurse | Where-Object { -not $_.PSIsContainer })
             $count = 0
 
             foreach ($file in $files) {
@@ -582,7 +599,7 @@ function Compress-Folder {
         }
 
         New-Object PSCustomObject -Property @{
-            ZipFilePath = $zipFilePath.ToString()
+            ZipFilePath  = $zipFilePath.ToString()
             FilesRemoved = $filesRemoved -eq $true
         }
     }
@@ -591,15 +608,90 @@ function Compress-Folder {
     }
 }
 
+function Save-Process {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $win32Process = Get-CimInstance Win32_Process
+    $win32Process | Export-Clixml -Path $(Join-Path $Path -ChildPath "Win32_Process_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
+
+    foreach ($proc in $win32Process) {
+        $proc.Dispose()
+    }
+}
+
+<#
+.SYNOPSIS
+Wait until user enters Enter key or Ctrl+C.
+This is only possible when Console is available.
+Console is not available in PowerShell ISE and in this case Ctrl+C will interrupt.
+#>
+function Wait-EnterOrControlC {
+    [CmdletBinding()]
+    param()
+
+    # Check if a console is available, and if so, manually detect Enter key and Ctrl+C.
+    $consoleAvailable = $false
+
+    try {
+        $Host.UI.RawUI.FlushInputBuffer()
+        [Console]::TreatControlCAsInput = $true
+        $consoleAvailable = $true
+    }
+    catch {
+        # Ignore
+    }
+
+    if ($consoleAvailable) {
+        $detectedKey = $null
+
+        while ($true) {
+            if ([Console]::KeyAvailable) {
+                [ConsoleKeyInfo]$keyInfo = [Console]::ReadKey($true)
+
+                # Enter or Ctrl+C exits the wait loop
+                if ($keyInfo.Key -eq [ConsoleKey]::Enter) {
+                    Write-Log "Enter key is detected"
+                    $detectedKey = 'Enter'
+                }
+                elseif (($keyInfo.Modifiers -band [ConsoleModifiers]'Control') -and ($keyInfo.Key -eq [ConsoleKey]::C)) {
+                    Write-Log "Ctrl+C is detected"
+                    $detectedKey = 'Ctrl+C'
+                }
+
+                if ($detectedKey) {
+                    break
+                }
+            }
+        }
+
+        [Console]::TreatControlCAsInput = $false
+    }
+    else {
+        # Read-Host is not used here because it'd block background tasks.
+        # When using UI.ReadLine(), Ctrl+C cannot be detected.
+        $null = $host.UI.ReadLine()
+        $detectedKey = 'Enter'
+    }
+
+    [PSCustomObject]@{
+        Key                = $detectedKey
+        IsConsoleAvailable = $consoleAvailable
+    }
+}
 
 function Collect-ExTRA {
     [CmdletBinding(SupportsShouldProcess = $true)]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '')]
     param(
         [Parameter(Mandatory = $true)]
         $Path,
         [string[]]$Components,
         [Hashtable]$ComponentAndTags,
-        [ValidateSet('NewFile','Circular')]
+        [ValidateSet('NewFile', 'Circular')]
         [string]$LogFileMode = 'NewFile',
         [int]$MaxFileSizeMB = 512
     )
@@ -610,40 +702,58 @@ function Collect-ExTRA {
     }
 
     if (-not (Test-Path $Path)) {
-        New-Item $Path -ItemType directory -ErrorAction Stop | Out-Null
+        $null = New-Item $Path -ItemType directory -ErrorAction Stop
     }
 
     $Path = Resolve-Path $Path
     $tempPath = Join-Path $Path -ChildPath $([Guid]::NewGuid().ToString())
-    New-Item $tempPath -ItemType directory -ErrorAction Stop | Out-Null
+    $null = New-Item $tempPath -ItemType directory -ErrorAction Stop
 
     try {
-        Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
+        Save-Process -Path $tempPath
 
         if (-not $PSBoundParameters.ContainsKey('MaxFileSizeMB') -and $LogFileMode -eq 'Circular') {
             $MaxFileSizeMB = 2048
         }
 
-        $sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags -LogFileMode $LogFileMode -MaxFileSizeMB $MaxFileSizeMB
+        $err = $($sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags -LogFileMode $LogFileMode -MaxFileSizeMB $MaxFileSizeMB) 2>&1
 
-        Read-Host "ExTRA has successfully started. Hit enter to stop ExTRA"
+        # In case of 0x803000b7 == "Data Collector Set already exists", stop the running sesssion and try one more time.
+        if ($err -and $LASTEXITCODE -eq 0x803000b7) {
+            Write-Verbose "LastExitCode was 0x803000b7 and retrying..."
+            $stopError = $($null = Stop-ExTRA) 2>&1
+
+            if (-not $stopError) {
+                $sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags -LogFileMode $LogFileMode -MaxFileSizeMB $MaxFileSizeMB -ErrorAction Stop
+            }
+        }
+
+        Write-Host "ExTRA has successfully started. Hit enter to stop: " -NoNewline
+        $waitResult = Wait-EnterOrControlC
+
+        if ($waitResult.Key -ne 'Enter') {
+            return
+        }
 
         $stopResult = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
-        Get-WmiObject win32_process | Export-Clixml -Path $(Join-Path $tempPath -ChildPath "Processes_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss").xml")
+
+        Save-Process -Path $tempPath
+
         $zipFileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
-        Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles | Out-Null
+        $null = Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles
         Remove-Item $tempPath -Force
+
         Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
         Invoke-Item $Path
     }
     finally {
         if ($sessionInfo -and -not $stopResult) {
+            Write-Host ([string]::Empty)
             Write-Verbose "Stopping $($sessionInfo.ETWSessionName)"
-            Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName | Out-Null
+            $null = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
             Write-Warning "ExTRA was canceled. Please remove files in `"$tempPath`" if not needed."
         }
     }
 }
-
 
 Export-ModuleMember -Function Get-ExchangeTraceComponent, Start-ExTRA, Stop-ExTRA, Get-EtwSession, Stop-EtwSession, Collect-ExTRA
