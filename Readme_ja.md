@@ -5,7 +5,7 @@ ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための
 
 1. ExTRA.psm1 をダウンロードし、ブロックを解除します。
 
-    [ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2021-05-26/ExTRA.psm1)
+    [ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2023-08-24/ExTRA.psm1)
 
    1. ファイルを右クリックして、プロパティを開きます
    2. [全般] タブにて、「このファイルは他のコンピューターから取得したものです。このコンピューターを保護するため、このファイルへのアクセスはブロックされる可能性があります。」というメッセージが表示されている場合には、[許可する] にチェックを入れます。
