@@ -654,11 +654,11 @@ function Wait-EnterOrControlC {
 
                 # Enter or Ctrl+C exits the wait loop
                 if ($keyInfo.Key -eq [ConsoleKey]::Enter) {
-                    Write-Log "Enter key is detected"
+                    Write-Host "Enter key is detected"
                     $detectedKey = 'Enter'
                 }
                 elseif (($keyInfo.Modifiers -band [ConsoleModifiers]'Control') -and ($keyInfo.Key -eq [ConsoleKey]::C)) {
-                    Write-Log "Ctrl+C is detected"
+                    Write-Host "Ctrl+C is detected"
                     $detectedKey = 'Ctrl+C'
                 }
 
