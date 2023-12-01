@@ -33,6 +33,99 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #requires -Version 2.0
 
+# For now, just forward to Write-Verbose.
+# In future, it may port from OutlookTrace.psm1 in https://github.com/jpmessaging/OutlookTrace.
+function Write-Log {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline = $true)]
+        [string]$Message,
+        [Parameter(ValueFromPipeline = $true)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord,
+        [ValidateSet('Information', 'Warning', 'Error')]
+        $Category = 'Information',
+        # Output the given ErrorRecord
+        [Switch]$PassThru
+    )
+
+    process {
+        Write-Verbose $Message
+    }
+}
+
+<#
+.SYNOPSIS
+    Start enumerating processes
+.DESCRIPTION
+    This command starts enumerating Win32 processes until canceled via a CancellationToken, and it repeats with the given interval.
+    For processes whose name matches the NamePattern parameter, their User and Environment Variables are also retrieved.
+#>
+function Start-ProcessCapture {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        # Folder path to save process list
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        # Name of EventWaitHandle. When signaled, this command exits.
+        [string]$CancelEventName,
+        [TimeSpan]$Interval = [TimeSpan]::FromSeconds(1)
+    )
+
+    if (-not (Test-Path $Path)) {
+        $null = New-Item $Path -ItemType Directory -ErrorAction Stop
+    }
+
+    try {
+        $stopEvent = [System.Threading.EventWaitHandle]::OpenExisting($CancelEventName)
+    }
+    catch {
+        Write-Error -Message "OpenExisting failed for `"$CancelEventName`". $_" -Exception $_.Exception
+        return
+    }
+
+    # Using a Hash table is much faster than Where-Object.
+    $hashSet = @{}
+
+    while ($true) {
+        Get-CimInstance Win32_Process | & {
+            param ([Parameter(ValueFromPipeline)]$win32Process)
+            process {
+                try {
+                    $key = "$($win32Process.ProcessId),$($win32Process.CreationDate)"
+
+                    if ($hashSet.ContainsKey($key)) {
+                        return
+                    }
+
+                    $obj = @{
+                        Name            = $win32Process.Name
+                        Id              = $win32Process.ProcessId
+                        CreationDate    = $win32Process.CreationDate
+                        Path            = $win32Process.Path
+                        CommandLine     = $win32Process.CommandLine
+                        ParentProcessId = $win32Process.ParentProcessId
+                    }
+
+                    $hashSet.Add($key, [PSCustomObject]$obj)
+                }
+                finally {
+                    $win32Process.Dispose()
+                }
+            }
+        }
+
+        # If event is signaled, exit
+        if ($stopEvent.WaitOne(0)) {
+            "Cancel request acknowledged"
+            break
+        }
+
+        Start-Sleep -Seconds $Interval.TotalSeconds
+    }
+
+    $hashSet.Values | Export-Clixml -Path (Join-Path $Path 'Win32_Process.xml')
+}
 
 # ETW Logging Mode Constants for logman
 # https://docs.microsoft.com/en-us/windows/win32/etw/logging-mode-constants
@@ -666,6 +759,8 @@ function Wait-EnterOrControlC {
                     break
                 }
             }
+
+            Start-Sleep -Seconds 1
         }
 
         [Console]::TreatControlCAsInput = $false
@@ -710,8 +805,14 @@ function Collect-ExTRA {
     $tempPath = Join-Path $Path -ChildPath $([Guid]::NewGuid().ToString())
     $null = New-Item $tempPath -ItemType directory -ErrorAction Stop
 
+    $sessionInfo = $null
+    $processCaptureJob = $null
+
     try {
-        Save-Process -Path $tempPath
+        # Start Start-ProcessCapture as a job (Named event is for inter PS process communication)
+        $processCaptureEventName = [Guid]::NewGuid().ToString()
+        $processCaptureEvent = New-Object System.Threading.EventWaitHandle($false, [Threading.EventResetMode]::ManualReset, $processCaptureEventName)
+        $processCaptureJob = Start-Job -ScriptBlock ${Function:Start-ProcessCapture} -ArgumentList $tempPath, $processCaptureEventName
 
         if (-not $PSBoundParameters.ContainsKey('MaxFileSizeMB') -and $LogFileMode -eq 'Circular') {
             $MaxFileSizeMB = 2048
@@ -729,32 +830,47 @@ function Collect-ExTRA {
             }
         }
 
-        Write-Host "ExTRA has successfully started. Hit enter to stop: " -NoNewline
-        $waitResult = Wait-EnterOrControlC
-
-        if ($waitResult.Key -ne 'Enter') {
+        if (-not $sessionInfo) {
+            Write-Error "Failed to start ExTRA. ExitCode:$LASTEXITCODE"
             return
         }
 
-        $stopResult = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
+        Write-Host "ExTRA has successfully started" -ForegroundColor Green
+        Write-Host "Hit enter to stop: " -NoNewline
 
-        Save-Process -Path $tempPath
+        $waitResult = Wait-EnterOrControlC
 
-        $zipFileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
-        $null = Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles
-        Remove-Item $tempPath -Force
-
-        Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
-        Invoke-Item $Path
-    }
-    finally {
-        if ($sessionInfo -and -not $stopResult) {
-            Write-Host
-            Write-Verbose "Stopping $($sessionInfo.ETWSessionName)"
-            $null = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
-            Write-Warning "ExTRA was canceled. Please remove files in `"$tempPath`" if not needed."
+        if ($waitResult.Key -eq 'Ctrl+C') {
+            Write-Warning "Ctrl+C is detected"
+        }
+        else {
+            $startSuccess = $true
         }
     }
+    finally {
+        if ($sessionInfo) {
+            $null = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
+        }
+
+        if ($processCaptureJob) {
+            $null = $processCaptureEvent.Set()
+            Wait-Job -Job $processCaptureJob | Remove-Job
+            $processCaptureEvent.Close()
+        }
+    }
+
+    if (-not $startSuccess) {
+        Write-Warning "ExTRA was canceled. Please remove files in `"$tempPath`" if not needed."
+        return
+    }
+
+    $zipFileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
+    $null = Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles
+    Remove-Item $tempPath -Force
+
+    Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
+    Invoke-Item $Path
+
 }
 
 Export-ModuleMember -Function Get-ExchangeTraceComponent, Start-ExTRA, Stop-ExTRA, Get-EtwSession, Stop-EtwSession, Collect-ExTRA
