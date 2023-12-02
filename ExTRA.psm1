@@ -742,25 +742,21 @@ function Wait-EnterOrControlC {
         $detectedKey = $null
 
         while ($true) {
-            if ([Console]::KeyAvailable) {
-                [ConsoleKeyInfo]$keyInfo = [Console]::ReadKey($true)
+            [ConsoleKeyInfo]$keyInfo = [Console]::ReadKey(<# intercept #> $true)
 
-                # Enter or Ctrl+C exits the wait loop
-                if ($keyInfo.Key -eq [ConsoleKey]::Enter) {
-                    Write-Log "Enter key is detected"
-                    $detectedKey = 'Enter'
-                }
-                elseif (($keyInfo.Modifiers -band [ConsoleModifiers]'Control') -and ($keyInfo.Key -eq [ConsoleKey]::C)) {
-                    Write-Log "Ctrl+C is detected"
-                    $detectedKey = 'Ctrl+C'
-                }
-
-                if ($detectedKey) {
-                    break
-                }
+            # Enter or Ctrl+C exits the wait loop
+            if ($keyInfo.Key -eq [ConsoleKey]::Enter) {
+                Write-Log "Enter key is detected"
+                $detectedKey = 'Enter'
+            }
+            elseif (($keyInfo.Modifiers -band [ConsoleModifiers]'Control') -and ($keyInfo.Key -eq [ConsoleKey]::C)) {
+                Write-Log "Ctrl+C is detected"
+                $detectedKey = 'Ctrl+C'
             }
 
-            Start-Sleep -Seconds 1
+            if ($detectedKey) {
+                break
+            }
         }
 
         [Console]::TreatControlCAsInput = $false
