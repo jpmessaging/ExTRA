@@ -785,7 +785,8 @@ function Collect-ExTRA {
         [Hashtable]$ComponentAndTags,
         [ValidateSet('NewFile', 'Circular')]
         [string]$LogFileMode = 'NewFile',
-        [int]$MaxFileSizeMB = 512
+        [int]$MaxFileSizeMB = 512,
+        [switch]$SkipArchive
     )
 
     if (-not $Components.Count -and -not $ComponentAndTags.Count) {
@@ -860,8 +861,14 @@ function Collect-ExTRA {
         return
     }
 
-    $zipFileName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
-    $null = Compress-Folder -Path $tempPath -ZipFileName $zipFileName -Destination $Path -RemoveFiles
+    $archiveName = "ExTRA_$($env:COMPUTERNAME)_$(Get-Date -Format "yyyyMMdd_HHmmss")"
+
+    if ($SkipArchive) {
+        Rename-Item $tempPath -NewName $archiveName
+        return
+    }
+
+    $null = Compress-Folder -Path $tempPath -ZipFileName $archiveName -Destination $Path -RemoveFiles
     Remove-Item $tempPath -Force
 
     Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
