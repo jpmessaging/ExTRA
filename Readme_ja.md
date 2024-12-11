@@ -1,24 +1,33 @@
 ## 概要
 ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための関数を含む PowerShell スクリプトです。
 
+[ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2024-12-11/ExTRA.psm1)
+
+SHA256: `82F385C62ADFE50B5DFDE2913BB9DD12513FF3338AD3301B79523F987F8267F6`
+
+`Get-FileHash` コマンドでファイル ハッシュを取得できます:
+
+  ```PowerShell
+  Get-FileHash <.psm1 ファイルのパス> -Algorithm SHA256
+  ```
+
 ## 利用方法
 
-1. ExTRA.psm1 をダウンロードし、ブロックを解除します。
 
-    [ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2023-12-02/ExTRA.psm1)
+1. ExTRA.psm1 ファイルを右クリックして、プロパティを開きます
 
-   1. ファイルを右クリックして、プロパティを開きます
-   2. [全般] タブにて、「このファイルは他のコンピューターから取得したものです。このコンピューターを保護するため、このファイルへのアクセスはブロックされる可能性があります。」というメッセージが表示されている場合には、[許可する] にチェックを入れます。
+   [全般] タブにて、`このファイルは他のコンピューターから取得したものです。このコンピューターを保護するため、このファイルへのアクセスはブロックされる可能性があります。` というメッセージが表示されている場合には、`許可する` にチェックを入れます。
 
 2. 対象の Exchange サーバー上に ExTRA.psm1 をコピーします。
 3. 管理者権限で Exchange 管理シェルを起動します。
 4. ExTRA.psm1 をインポートします。
 
-    ```
+    ```PowerShell
     Import-Module <ExTRA.psm1 へのパス> -DisableNameChecking
     ```
+
     例:
-    ```
+    ```PowerShell
     Import-Module c:\temp\ExTRA.psm1 -DisableNameChecking
     ```
 
@@ -26,19 +35,18 @@ ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための
 
     ※ 採取するコンポーネント (とタグ) についてはエンジニアからの案内をご確認ください。
 
-    ```PowerShell
+    ```
     Collect-ExTRA -Path <出力先フォルダ> -Components <採取するコンポーネント名の配列> -ComponentAndTags <採取するコンポーネントとタグのハッシュテーブル>
     ```
 
     例:
-    ```PowerShell
+    ```
     Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage -ComponentAndTags @{'SystemLogging'= 'SystemNet,SystemNetSocket'}
     ```
 
-    \* `Components` で指定されたものは、すべてのタグについてトレースが有効化されます。`ComponentAndTags` で指定されたものは、明示的に指定されたタグについてのみ有効化されます。
+    ⚠️ `Components` で指定されたものは、すべてのタグについてトレースが有効化されます。`ComponentAndTags` で指定されたものは、明示的に指定されたタグについてのみ有効化されます。
 
-
-6. 正常にトレースが開始されると、`"ExTRA has successfully started. Hit enter to stop ExTRA"` と表示されるので、 事象を再現します。
+6. 正常にトレースが開始されると、`ExTRA has successfully started. Press enter to stop:` と表示されるので、 事象を再現します。
 7. 再現後、コンソールに Enter キーを入力しトレースを停止します。
 
 

@@ -2,48 +2,55 @@
 
 ExTRA.psm1 contains functions to collect ETW traces on an Exchange Server
 
+[Download](https://github.com/jpmessaging/ExTRA/releases/download/v2024-12-11/ExTRA.psm1)
+
+SHA256: `82F385C62ADFE50B5DFDE2913BB9DD12513FF3338AD3301B79523F987F8267F6`
+
+You can get the file hash with `Get-FileHash`:
+
+  ```PowerShell
+  Get-FileHash <Path to .psm1 file> -Algorithm SHA256
+  ```
+
 ## How to use
 
-1. Download ExTRA.psm1 and unblock the file
+1. Right-click ExTRA.psm1 file and click Property
 
-    [Download](https://github.com/jpmessaging/ExTRA/releases/download/v2023-12-02/ExTRA.psm1)
-
-    1. Right-click the psm1 file and click [Property]  
-    2. In the [General] tab, if you see "This file came from another computer and might be blocked to help protect this computer]", check [Unblock]
+    In the General tab, if you see `This file came from another computer and might be blocked to help protect this computer`, check `Unblock`
 
 2. Place ExTRA.psm1 on an Exchange Server
 3. Start a PowerShell console as administrator
 4. Import ExTRA.psm1
 
-    ```
+    ```PowerShell
     Import-Module <path to ExTRA.psm1> -DisableNameChecking
     ```
+
     e.g.
-    ```
+    ```PowerShell
     Import-Module C:\temp\ExTRA.psm1 -DisableNameChecking
     ```
 
 5. Run Collect-ExTRA
 
     Note: Follow Microsoft engineer's instruction regarding which components & tags to trace.
-    When the trace has successfully started, it shows `"ExTRA has successfully started. Hit enter to stop ExTRA"`
+    When the trace has successfully started, it shows `ExTRA has successfully started. Press enter to stop:`
 
-
-    ```PowerShell
+    ```
     Collect-ExTRA -Path <output folder> -Components <array of component names> -ComponentAndTags <hash table of components & tags to trace>
     ```
 
     e.g.
-    ```PowerShell
+    ```
     Collect-ExTRA -Path C:\temp -Components ADProvider, Data.Storage -ComponentAndTags @{'SystemLogging'= 'SystemNet,SystemNetSocket'}
     ```
 
-    \* For components listed in `Components` parameter, trace is enabled for all tags.  For those in `ComponentAndTags` parameter, trace is enabled only for the specified tags.
+    ⚠️ For components listed in `Components` parameter, trace is enabled for all tags.  For those in `ComponentAndTags` parameter, trace is enabled only for the specified tags.
 
 
 6.  Reproduce the issue
 
-7. Hit Enter to stop tacing
+7. Press Enter key to stop tacing
 
 A zip file `"ExTRA_<ServerName>_<DateTime>.zip"` is created in the output folder specified in step 5.
 Please send this to a Microsoft engineer for analysis.
