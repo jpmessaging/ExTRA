@@ -176,8 +176,7 @@ function Close-Log {
 .SYNOPSIS
     Start enumerating processes
 .DESCRIPTION
-    This command starts enumerating Win32 processes until canceled via a CancellationToken, and it repeats with the given interval.
-    For processes whose name matches the NamePattern parameter, their User and Environment Variables are also retrieved.
+    This command starts enumerating Win32 processes until canceled via an EventWaitHandle, and it repeats with the given interval.
 #>
 function Start-ProcessCapture {
     [CmdletBinding()]
@@ -416,19 +415,17 @@ function Start-ExTRA {
     )
 
     $logmanCommand = "logman.exe $logmanArgs"
-    # $logmanCommand = "logman.exe start $ETWSessionName -p `"$ProviderName`" -o `"$TraceOutputPath`" -bs $BufferSizeKB -max $MaxFileSizeMB -mode `"$mode`" -ets"
 
     # Start ETW session
     if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, $logmanCommand)) {
         # Write-Verbose "executing $logmanCommand"
         # $logmanResult = Invoke-Expression $logmanCommand
 
-        Write-Verbose "executing $logmanCommand"
+        Write-Log "Invoking: logman.exe $logmanArgs"
         $logmanResult = & logman.exe $logmanArgs
 
         if ($LASTEXITCODE -ne 0) {
-            #throw "Failed to start a ETW session `"$ETWSessionName`". Error: 0x$("{0:X}" -f $LASTEXITCODE)"
-            Write-Error -Message "Failed to start a ETW session `"$ETWSessionName`". Error: 0x$("{0:X}" -f $LASTEXITCODE)"
+            Write-Error -Message "Failed to start an ETW session `"$ETWSessionName`". Error: 0x$("{0:X}" -f $LASTEXITCODE)"
             return
         }
     }
@@ -1076,8 +1073,7 @@ function Collect-ExTRA {
     finally {
         if ($sessionInfo) {
             # Save Config file
-            $configFile = "C:\EnabledTraces.Config"
-            Copy-Item $configFile -Destination $tempPath -ErrorAction SilentlyContinue
+            Copy-Item $sessionInfo.ConfigFile -Destination $tempPath -ErrorAction SilentlyContinue
 
             $null = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
         }
