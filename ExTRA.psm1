@@ -33,8 +33,35 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #requires -Version 2.0
 
-# For now, just forward to Write-Verbose.
-# In future, it may port from OutlookTrace.psm1 in https://github.com/jpmessaging/OutlookTrace.
+function Open-Log {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [switch]$AutoFlush,
+        [switch]$WithBOM
+    )
+
+    if ($Script:LogWriter) {
+        Close-Log
+    }
+
+    # Open a file & add header
+    try {
+        $utf8Encoding = New-Object System.Text.UTF8Encoding -ArgumentList $WithBOM.IsPresent
+        $Script:LogWriter = New-Object System.IO.StreamWriter -ArgumentList $Path, <# append #> $true, $utf8Encoding
+
+        if ($AutoFlush) {
+            $Script:LogWriter.AutoFlush = $true
+        }
+
+        $Script:LogWriter.WriteLine("datetime,thread_relative_delta,thread,function,category,message")
+    }
+    catch {
+        Write-Error -ErrorRecord $_
+    }
+}
+
 function Write-Log {
     [CmdletBinding()]
     param (
@@ -49,7 +76,99 @@ function Write-Log {
     )
 
     process {
-        Write-Verbose $Message
+        # If ErrorRecord is provided, use it.
+        if ($ErrorRecord) {
+            $errorDetails = $null
+
+            if ($ErrorRecord.ErrorDetails.Message -ne $ErrorRecord.Exception.Message) {
+                $errorDetails = $ErrorRecord.ErrorDetails.Message
+            }
+
+            $Message = "$Message; [ErrorRecord] $(if ($errorDetails) { "ErrorDetails:$errorDetails, " })ExceptionType:$($ErrorRecord.Exception.GetType().Name), Exception.Message:$($ErrorRecord.Exception.Message), InvocationInfo.Line:'$($ErrorRecord.InvocationInfo.Line.Trim())', ScriptStackTrace:$($ErrorRecord.ScriptStackTrace.Replace([Environment]::NewLine, ' '))"
+        }
+
+        # Ignore null or an empty string.
+        if (-not $Message) {
+            return
+        }
+
+        # If Open-Log is not called beforehand, just output to verbose.
+        if (-not $Script:LogWriter) {
+            Write-Verbose $Message
+            return
+        }
+
+        # If LogWriter exists but disposed already, something went wrong.
+        if (-not $Script:LogWriter.BaseStream.CanWrite) {
+            Write-Warning "LogWriter has been disposed already"
+            return
+        }
+
+        $currentTime = Get-Date
+        $currentTimeFormatted = $currentTime.ToString('o')
+
+        # Delta time is relative to thread.
+        # Each thread has it's own copy of LastLogTime now.
+        [TimeSpan]$delta = 0
+
+        if ($Script:LastLogTime) {
+            $delta = $currentTime.Subtract($Script:LastLogTime)
+        }
+
+        $caller = '<ScriptBlock>'
+        $caller = Get-PSCallStack | Select-Object -Skip 1 | & {
+            process {
+                if (-not $_.Command.StartsWith('<ScriptBlock>')) {
+                    $_.Command
+                }
+            }
+        } | Select-Object -First 1
+
+        # Format as CSV:
+        $sb = New-Object System.Text.StringBuilder
+        $null = $sb.Append($currentTimeFormatted).Append(',')
+        $null = $sb.Append($delta).Append(',')
+        $null = $sb.Append([System.Threading.Thread]::CurrentThread.ManagedThreadId).Append(',')
+        $null = $sb.Append($caller).Append(',')
+
+        $categoryEmoji = switch ($Category) {
+            'Information' { $Script:Emoji.Information; break }
+            'Warning' { $Script:Emoji.Warning; break }
+            'Error' { $Script:Emoji.Error; break }
+        }
+
+        $null = $sb.Append($categoryEmoji).Append(',')
+
+        $null = $sb.Append('"').Append($Message.Replace('"', "'")).Append('"')
+
+        # Protect from concurrent write
+        [System.Threading.Monitor]::Enter($Script:LogWriter)
+
+        try {
+            $Script:LogWriter.WriteLine($sb.ToString())
+        }
+        finally {
+            [System.Threading.Monitor]::Exit($Script:LogWriter)
+        }
+
+        $sb = $null
+        $Script:LastLogTime = $currentTime
+
+        if ($PassThru) {
+            $ErrorRecord
+        }
+    }
+}
+
+function Close-Log {
+    if ($Script:LogWriter) {
+        if ($Script:LogWriter.BaseStream.CanWrite) {
+            Write-Log "Closing LogWriter"
+            $Script:LogWriter.Close()
+        }
+
+        $Script:LogWriter = $null
+        $Script:LastLogTime = $null
     }
 }
 
@@ -775,6 +894,102 @@ function Wait-EnterOrControlC {
     }
 }
 
+<#
+.SYNOPSIS
+    Helper function that returns a string of command expression with given parameters.
+
+.EXAMPLE
+    Get-CommandExpression -Command Get-Process -Parameters @{ Name = 'Outlook' }
+
+.EXAMPLE
+    Get-CommandExpression -Invocation $MyInvocation
+
+.NOTES
+    This function does not check if the given parameters belong to the same ParameterSet.
+    So, there is no guarantee that the output expression runs successfully.
+
+    For example, the following returns "Get-Process -Name Outlook -Id 123", but "Name" & "Id" parameters cannot be used simultaneously.
+
+    Get-CommandExpression -Command Get-Process -Parameters @{ Name = 'Outlook'; Id = '123' }
+#>
+function Get-CommandExpression {
+    [CmdletBinding(PositionalBinding = $false)]
+    [OutputType([string])]
+    param(
+        [Parameter(ParameterSetName = 'Command', Mandatory)]
+        $Command,
+        [Parameter(ParameterSetName = 'Command', Mandatory)]
+        [Hashtable]$Parameters,
+        [Parameter(ParameterSetName = 'Invocation', Mandatory)]
+        [System.Management.Automation.InvocationInfo]
+        $Invocation
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq 'Invocation') {
+        $Command = $Invocation.MyCommand
+        $Parameters = $Invocation.BoundParameters
+    }
+
+    if ($Command -is [string]) {
+        $Command = Get-Command $Command -ErrorAction SilentlyContinue
+
+        if (-not $Command) {
+            Write-Error "Cannot find $Command"
+            return
+        }
+    }
+
+    if ($Command -isnot [System.Management.Automation.CommandInfo]) {
+        Write-Error "Need a CommandInfo for Command paramter"
+        return
+    }
+
+    # It is expected to be passed a FunctionInfo or CmdletInfo. Anything else (such as ScriptInfo) is not really expected while it just returns an empty string
+    if ($Command -isnot [System.Management.Automation.FunctionInfo] -or $Command -isnot [System.Management.Automation.CmdletInfo]) {
+        Write-Verbose "Passed Command is of type $($Command.GetType().FullName)"
+    }
+
+    $sb = New-Object System.Text.StringBuilder -ArgumentList $Command.Name
+
+    foreach ($param in $Parameters.GetEnumerator()) {
+        # Skip if the given parameter name is not available
+        if (-not $Command.Parameters.ContainsKey($param.Key)) {
+            continue
+        }
+
+        $null = $sb.Append(" -$($param.Key)")
+
+        # If this is a Switch parameter, no need to add value
+        if ($Command.Parameters[$param.Key].SwitchParameter) {
+            continue
+        }
+
+        $value = $param.Value
+
+        if ($value -is [string] -and $value.IndexOf(' ') -ge 0) {
+            $value = "'$value'"
+        }
+        elseif ($value -is [System.Collections.IDictionary]) {
+            $tmp = New-Object System.Text.StringBuilder -ArgumentList '@{'
+
+            foreach ($entry in $value.GetEnumerator()) {
+                $null = $tmp.Append("'$($entry.Key)' = ").Append("'$($entry.Value)'").Append(';')
+            }
+
+            $null = $tmp.Remove($tmp.Length - 1, 1)
+            $null = $tmp.Append('}')
+            $value = $tmp.ToString()
+        }
+        elseif ($value -is [System.Collections.ICollection]) {
+            $value = $value -join ', '
+        }
+
+        $null = $sb.Append(" $value")
+    }
+
+    $sb.ToString()
+}
+
 function Collect-ExTRA {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '')]
@@ -802,10 +1017,21 @@ function Collect-ExTRA {
     $tempPath = Join-Path $Path -ChildPath $([Guid]::NewGuid().ToString())
     $null = New-Item $tempPath -ItemType directory -ErrorAction Stop
 
+    $currentUser = Resolve-User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+
+    # Open log file
+    Open-Log -Path (Join-Path $tempPath 'Log.csv') -WithBOM
+    Write-Log "COMPUTERNAME:$env:COMPUTERNAME"
+    Write-Log "PSVersion:$($PSVersionTable.PSVersion); CLRVersion:$($PSVersionTable.CLRVersion)"
+    Write-Log "PROCESSOR_ARCHITECTURE:$env:PROCESSOR_ARCHITECTURE; PROCESSOR_ARCHITEW6432:$env:PROCESSOR_ARCHITEW6432"
+    Write-Log "Running as $($currentUser.Name) ($($currentUser.Sid))"
+    Write-Log "Invocation:$(Get-CommandExpression -Invocation $MyInvocation)"
+
     $sessionInfo = $null
     $processCaptureJob = $null
 
     try {
+        Write-Log "Starting Start-ProcessCapture as a job"
         # Start Start-ProcessCapture as a job (Named event is for inter PS process communication)
         $processCaptureEventName = [Guid]::NewGuid().ToString()
         $processCaptureEvent = New-Object System.Threading.EventWaitHandle($false, [Threading.EventResetMode]::ManualReset, $processCaptureEventName)
@@ -815,11 +1041,12 @@ function Collect-ExTRA {
             $MaxFileSizeMB = 2048
         }
 
+        Write-Log "Starting ExTRA"
         $err = $($sessionInfo = Start-ExTRA -Path $tempPath -Components $Components -ComponentAndTags $ComponentAndTags -LogFileMode $LogFileMode -MaxFileSizeMB $MaxFileSizeMB) 2>&1
 
         # In case of 0x803000b7 == "Data Collector Set already exists", stop the running sesssion and try one more time.
         if ($err -and $LASTEXITCODE -eq 0x803000b7) {
-            Write-Verbose "LastExitCode was 0x803000b7 and retrying..."
+            Write-Log "Start-ExTRA's LastExitCode was 0x803000b7 and retrying..."
             $stopError = $($null = Stop-ExTRA) 2>&1
 
             if (-not $stopError) {
@@ -832,12 +1059,14 @@ function Collect-ExTRA {
             return
         }
 
+        Write-Log "ExTRA has successfully started"
         Write-Host "ExTRA has successfully started" -ForegroundColor Green
-        Write-Host "Hit enter to stop: " -NoNewline
+        Write-Host "Press enter to stop: " -NoNewline
 
         $waitResult = Wait-EnterOrControlC
 
         if ($waitResult.Key -eq 'Ctrl+C') {
+            Write-Log "Ctrl+C is detected"
             Write-Warning "Ctrl+C is detected"
         }
         else {
@@ -846,6 +1075,10 @@ function Collect-ExTRA {
     }
     finally {
         if ($sessionInfo) {
+            # Save Config file
+            $configFile = "C:\EnabledTraces.Config"
+            Copy-Item $configFile -Destination $tempPath -ErrorAction SilentlyContinue
+
             $null = Stop-ExTRA -ETWSessionName $sessionInfo.ETWSessionName
         }
 
@@ -854,6 +1087,8 @@ function Collect-ExTRA {
             Wait-Job -Job $processCaptureJob | Remove-Job
             $processCaptureEvent.Close()
         }
+
+        Close-Log
     }
 
     if (-not $startSuccess) {
@@ -873,7 +1108,13 @@ function Collect-ExTRA {
 
     Write-Host "The collected data is in `"$(Join-Path $Path $zipFileName).zip`""
     Invoke-Item $Path
+}
 
+# Some emoji chars (https://unicode.org/emoji/charts/full-emoji-list.html)
+$Script:Emoji = @{
+    Information = [Char]::ConvertFromUtf32(0x2139)
+    Warning     = [Char]::ConvertFromUtf32(0x26A0)
+    Error       = [Char]::ConvertFromUtf32(0x26D4) # This is actually "NoEntry" emoji
 }
 
 Export-ModuleMember -Function Get-ExchangeTraceComponent, Start-ExTRA, Stop-ExTRA, Get-EtwSession, Stop-EtwSession, Collect-ExTRA
