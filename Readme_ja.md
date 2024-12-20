@@ -1,9 +1,9 @@
 ## 概要
 ExTRA.psm1 は Exchange サーバーの ETW トレースを取得するための関数を含む PowerShell スクリプトです。
 
-[ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2024-12-11/ExTRA.psm1)
+[ダウンロード](https://github.com/jpmessaging/ExTRA/releases/download/v2024-12-20/ExTRA.psm1)
 
-SHA256: `82F385C62ADFE50B5DFDE2913BB9DD12513FF3338AD3301B79523F987F8267F6`
+SHA256: `74AA42748A41644F80C18134384A69081BF6B07BB296EA1BAAF576F40A325EBF`
 
 `Get-FileHash` コマンドでファイル ハッシュを取得できます:
 

@@ -2,9 +2,9 @@
 
 ExTRA.psm1 contains functions to collect ETW traces on an Exchange Server
 
-[Download](https://github.com/jpmessaging/ExTRA/releases/download/v2024-12-11/ExTRA.psm1)
+[Download](https://github.com/jpmessaging/ExTRA/releases/download/v2024-12-20/ExTRA.psm1)
 
-SHA256: `82F385C62ADFE50B5DFDE2913BB9DD12513FF3338AD3301B79523F987F8267F6`
+SHA256: `74AA42748A41644F80C18134384A69081BF6B07BB296EA1BAAF576F40A325EBF`
 
 You can get the file hash with `Get-FileHash`:
 
