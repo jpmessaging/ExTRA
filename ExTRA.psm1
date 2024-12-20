@@ -31,7 +31,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #>
 
-$Version = 'v2024-12-11'
+$Version = 'v2024-12-20'
 #requires -Version 2.0
 
 function Open-Log {
@@ -171,6 +171,74 @@ function Close-Log {
         $Script:LogWriter = $null
         $Script:LastLogTime = $null
     }
+}
+
+function Resolve-User {
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Position = 0, Mandatory = $true)]
+        # User Name or SID
+        [string]$Identity
+    )
+
+    if ($null -eq $Script:ResolveCache) {
+        $Script:ResolveCache = @{}
+    }
+
+    # Return the cached entry if available.
+    if ($Script:ResolveCache.ContainsKey($Identity)) {
+        $Script:ResolveCache[$Identity]
+        return
+    }
+
+    # Note:WMI Win32_UserAccount can be very slow. I'm avoiding here.
+    # Get-WmiObject -Class Win32_UserAccount -Filter "Name = '$userName'"
+
+    $sid = $account = $null
+
+    # Is SID?
+    try {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
+        $account = $sid.Translate([System.Security.Principal.NTAccount])
+    }
+    catch {
+        # Ignore
+    }
+
+    # If not SID, then must be the account name
+    if (-not $sid) {
+        try {
+            $account = New-Object System.Security.Principal.NTAccount($Identity)
+            $sid = $account.Translate([System.Security.Principal.SecurityIdentifier])
+
+            # Translate from SID to acccount so that the account name is more complete (domain\name)
+            $account = $sid.Translate([System.Security.Principal.NTAccount])
+        }
+        catch {
+            # Ignore
+        }
+    }
+
+    if ($null -eq $sid -or $null -eq $account) {
+        Write-Error "Cannot resolve $Identity"
+        return
+    }
+
+    $resolved = [PSCustomObject]@{
+        Name = $account.ToString()
+        Sid  = $sid.ToString()
+    } | Add-Member -MemberType ScriptMethod -Name 'ToString' -Value { $this.Name } -Force -PassThru
+
+    # Add to cache
+    if (-not $Script:ResolveCache.ContainsKey($resolved.Name)) {
+        $Script:ResolveCache.Add($resolved.Name, $resolved)
+    }
+
+    if (-not $Script:ResolveCache.ContainsKey($resolved.Sid)) {
+        $Script:ResolveCache.Add($resolved.Sid, $resolved)
+    }
+
+    $resolved
 }
 
 <#
